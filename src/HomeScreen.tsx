@@ -83,9 +83,8 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   }, [rows, preview, covers])
 
   const select = (id: string) => {
+    // Niente scorrimento: la mappa è agganciata in alto (.home-map) e resta in vista.
     setSelected(id === selected ? undefined : id)
-    // La mappa è in cima: se la scheda toccata è più in basso, si torna su a guardarla.
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function create() {
@@ -142,6 +141,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
       )}
 
       {pins.length > 0 && (
+        <div className="home-map">
         <MapView
           pins={pins}
           lines={lines}
@@ -160,6 +160,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
             </button>
           )}
         </MapView>
+        </div>
       )}
 
       {rows.length === 0 ? (

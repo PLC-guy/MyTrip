@@ -82,6 +82,16 @@ img { display: block; }
 .map-caption img { width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex: none; }
 .map-caption b { display: block; font: 400 1.05rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Fascia del colore di fondo dietro orologio e batteria: il contenuto che
+   scorre lì sotto non si vede, invece di apparire sfocato. Su computer è alta 0. */
+.statusbar-bg { position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--bg); z-index: 1000; pointer-events: none; }
+
+/* Mappa della Home agganciata in alto: si scorre l'elenco dei viaggi sotto di
+   lei e l'anteprima cambia senza dover tornare su. Più bassa che nelle altre
+   pagine, per lasciare spazio all'elenco. */
+.home-map { position: sticky; top: env(safe-area-inset-top); z-index: 10; background: var(--bg); padding: 6px 0 10px; margin: -6px 0 0; }
+.home-map .map { height: 36dvh; min-height: 220px; }
+
 /* --- Scorciatoie della Home --- */
 .shortcuts { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
 .shortcuts::-webkit-scrollbar { display: none; }

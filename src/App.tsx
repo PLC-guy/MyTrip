@@ -80,6 +80,7 @@ export default function App() {
 
   return (
     <>
+      <div className="statusbar-bg" />
       {updateReady && (
         <div className="banner">
           <button className="btn" onClick={() => void applyUpdate()}>
