@@ -115,7 +115,9 @@ img { display: block; }
 /* --- Foglio dal basso --- */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 1500; background: rgb(0 0 0 / 40%); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.15s ease-out; }
 .sheet {
-  width: 100%; max-width: 760px; max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
+  /* 92% del contenitore, non dello schermo: il contenitore si accorcia
+     quando sull'iPhone si apre la tastiera (vedi Sheet.tsx). */
+  width: 100%; max-width: 760px; max-height: 92%; overflow-y: auto; overscroll-behavior: contain;
   background: var(--bg); border-radius: 22px 22px 0 0;
   padding: 10px 16px calc(env(safe-area-inset-bottom) + 20px);
   animation: rise 0.2s ease-out;
