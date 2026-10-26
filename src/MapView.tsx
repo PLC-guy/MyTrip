@@ -34,6 +34,8 @@ interface Props {
   tall?: boolean
   /** Zoom massimo quando la mappa si adatta ai punti (15 = vie; 4 = paesi). */
   fitMaxZoom?: number
+  /** Punti da inquadrare senza disegnarli (pagina Paesi). */
+  fitPoints?: { lat: number; lon: number }[]
   /** Paesi da colorare (codici ISO), per la mappa dei paesi visitati. */
   countries?: { codes: string[]; color: string }
   /** Contenuto sovrapposto alla mappa (es. la didascalia dell'itinerario animato). */
@@ -62,7 +64,7 @@ function localize(map: maplibregl.Map) {
 
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fitMaxZoom = 15, countries, children }: Props) {
+export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fitMaxZoom = 15, fitPoints, countries, children }: Props) {
   const icons = useRef<maplibregl.Marker[]>([])
   const countriesRef = useRef(countries)
   countriesRef.current = countries
@@ -180,10 +182,12 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
   // altrimenti ogni nota o stellina farebbe saltare la vista.
   useEffect(() => {
     const m = map.current
-    if (!m || pins.length === 0) return
+    const points = [...pins, ...(fitPoints ?? [])]
+    if (!m || points.length === 0) return
     const bounds = new maplibregl.LngLatBounds()
-    for (const p of pins) bounds.extend([p.lon, p.lat])
-    m.fitBounds(bounds, { padding: 50, maxZoom: fitMaxZoom, duration: 0 })
+    for (const p of points) bounds.extend([p.lon, p.lat])
+    // Più spazio sopra (etichetta del viaggio, pulsante ▶) e sotto (crediti, didascalia).
+    m.fitBounds(bounds, { padding: { top: 70, bottom: 60, left: 45, right: 45 }, maxZoom: fitMaxZoom, duration: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey])
 

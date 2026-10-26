@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, TRIP_COLORS, type Stop, type Trip, type TripKind } from './db'
+import { db, newId, TRIP_COLORS, type Photo, type Stop, type Trip, type TripKind } from './db'
+import { legLines } from './transport'
 import KindPicker from './KindPicker'
 import { fmtRange, plural } from './format'
 import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
@@ -44,15 +45,44 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
     return out.sort((a, b) => when(b) - when(a))
   })
 
-  const { pins, lines } = useMemo(() => {
+  /**
+   * Viaggio selezionato per l'anteprima: la mappa mostra solo lui, con le sue
+   * tappe, e sotto la scheda compare «Visualizza tappe». Si apre il viaggio
+   * solo da lì; un altro tocco seleziona un altro viaggio.
+   */
+  const [selected, setSelected] = useState<string>()
+  const preview = rows?.find((r) => r.trip.id === selected)
+
+  // Una miniatura per tappa, solo per il viaggio in anteprima.
+  const covers = useLiveQuery(async () => {
+    if (!selected) return undefined
+    const map = new Map<string, Photo>()
+    for (const p of await db.photos.where('tripId').equals(selected).sortBy('time')) if (!map.has(p.stopId)) map.set(p.stopId, p)
+    return map
+  }, [selected])
+
+  const { pins, lines, fitKey } = useMemo(() => {
+    if (preview) {
+      const pins: MapPin[] = preview.stops.map((s) => {
+        const cover = covers?.get(s.id)
+        return { id: preview.trip.id + '|' + s.id, lat: s.lat, lon: s.lon, color: preview.trip.color, img: cover ? thumbUrl(cover) : undefined, star: s.star }
+      })
+      return { pins, lines: legLines(preview.stops, preview.trip.color), fitKey: `anteprima:${preview.trip.id}:${preview.stops.length}` }
+    }
     const pins: MapPin[] = []
     const lines: MapLine[] = []
     for (const r of rows ?? []) {
       for (const s of r.stops) pins.push({ id: r.trip.id + '|' + s.id, lat: s.lat, lon: s.lon, color: r.trip.color })
       lines.push({ id: r.trip.id, color: r.trip.color, points: r.stops.map((s) => [s.lat, s.lon]) })
     }
-    return { pins, lines }
-  }, [rows])
+    return { pins, lines, fitKey: `tutti:${pins.length}` }
+  }, [rows, preview, covers])
+
+  const select = (id: string) => {
+    setSelected(id === selected ? undefined : id)
+    // La mappa è in cima: se la scheda toccata è più in basso, si torna su a guardarla.
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   async function create() {
     const clean = name.trim()
@@ -97,7 +127,26 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         </div>
       )}
 
-      {pins.length > 0 && <MapView pins={pins} lines={lines} fitKey={String(pins.length)} onPin={(id) => go({ name: 'trip', id: id.split('|')[0] })} />}
+      {pins.length > 0 && (
+        <MapView
+          pins={pins}
+          lines={lines}
+          fitKey={fitKey}
+          onPin={(id) => {
+            const [tripId, stopId] = id.split('|')
+            // In anteprima un puntatore apre quella tappa; sulla mappa di tutti i viaggi, seleziona il viaggio.
+            if (preview) go({ name: 'trip', id: tripId, stop: stopId })
+            else select(tripId)
+          }}
+        >
+          {preview && (
+            <button className="map-chip" onClick={() => setSelected(undefined)}>
+              <span className="dot" style={{ background: preview.trip.color }} />
+              {preview.trip.name} <span className="map-chip-x">✕ tutti</span>
+            </button>
+          )}
+        </MapView>
+      )}
 
       {rows.length === 0 ? (
         <div className="empty-state">
@@ -110,7 +159,8 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
 
       <div className="trips">
         {rows.map((r) => (
-          <button key={r.trip.id} className="trip-card" onClick={() => go({ name: 'trip', id: r.trip.id })}>
+          <div key={r.trip.id} className={`trip-item${r.trip.id === selected ? ' on' : ''}`}>
+          <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
             {r.cover ? (
               <img className="cover" src={thumbUrl(r.cover)} alt="" />
             ) : (
@@ -134,6 +184,12 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
               )}
             </div>
           </button>
+          {r.trip.id === selected && (
+            <button className="btn open-trip" onClick={() => go({ name: 'trip', id: r.trip.id })}>
+              Visualizza tappe →
+            </button>
+          )}
+          </div>
         ))}
       </div>
 

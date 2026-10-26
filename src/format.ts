@@ -3,7 +3,12 @@
  * come stringa EXIF ("2026-09-26T18:18:45"). Per formattarla senza che il fuso
  * del dispositivo la sposti, la si legge come UTC e la si stampa in UTC.
  */
-const asDate = (local: string) => new Date(local + 'Z')
+/**
+ * ⚠️ Accetta anche un giorno senza ora ("2026-02-10"). Safari considera non
+ * valida la stringa "2026-02-10Z" (Chrome no), e formattare una data non valida
+ * lancia un errore che lasciava la schermata del viaggio vuota (0.4.0 su iPhone).
+ */
+const asDate = (local: string) => new Date((local.length === 10 ? local + 'T00:00:00' : local) + 'Z')
 
 const DAY = new Intl.DateTimeFormat('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 const DAY_LONG = new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })

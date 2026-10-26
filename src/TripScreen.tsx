@@ -15,7 +15,7 @@ import { setBusy } from './update'
 import { deliverFile, exportTrip } from './backup'
 import { exportKml } from './kml'
 import { fmtKm, tripStats } from './stats'
-import { TRANSPORTS, transportOf } from './transport'
+import { legLines, TRANSPORTS, transportOf } from './transport'
 import { describeWeather, weatherPending } from './weather'
 import type { Route } from './App'
 
@@ -102,13 +102,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   // animato si disegnano solo i tratti già percorsi.
   const lines = useMemo<MapLine[]>(() => {
     const stops = data?.stops ?? []
-    const upTo = play === null ? stops.length : play + 1
-    const out: MapLine[] = []
-    for (let i = 1; i < upTo; i++) {
-      const t = transportOf(stops[i].transport)
-      out.push({ id: stops[i].id, color, points: [[stops[i - 1].lat, stops[i - 1].lon], [stops[i].lat, stops[i].lon]], flight: t?.key === 'plane', icon: t?.icon })
-    }
-    return out
+    return legLines(stops, color, play === null ? stops.length : play + 1)
   }, [data?.stops, color, play])
 
   const stats = useMemo(() => (data ? tripStats(data.stops, data.photos) : undefined), [data])

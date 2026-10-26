@@ -50,10 +50,11 @@ export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
       {stops && (
         // La chiave forza una mappa nuova quando cambia l'elenco: i paesi
         // colorati si decidono una volta, al caricamento dello stile.
-        // Un puntino per tappa: inquadra tutti i paesi visitati e mostra dove.
+        // Le tappe si inquadrano ma non si disegnano: coprirebbero i paesi piccoli.
         <MapView
           key={codes.join(',')}
-          pins={stops.map((s) => ({ id: s.id, lat: s.lat, lon: s.lon, color: '#1F5E5B' }))}
+          pins={[]}
+          fitPoints={stops}
           lines={[]}
           fitKey={codes.join(',')}
           fitMaxZoom={4}

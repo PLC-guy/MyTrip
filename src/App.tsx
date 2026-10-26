@@ -5,6 +5,7 @@ import SettingsScreen from './SettingsScreen'
 import StarsScreen from './StarsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
+import ErrorBoundary from './ErrorBoundary'
 import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
 import { reloadLoopDetected } from './reloadGuard'
@@ -84,12 +85,15 @@ export default function App() {
           </button>
         </div>
       )}
-      {route.name === 'home' && <HomeScreen go={go} />}
-      {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
-      {route.name === 'settings' && <SettingsScreen go={go} />}
-      {route.name === 'stars' && <StarsScreen go={go} />}
-      {route.name === 'search' && <SearchScreen go={go} />}
-      {route.name === 'countries' && <CountriesScreen go={go} />}
+      {/* La chiave la ricrea a ogni schermata: cambiando pagina si riparte puliti. */}
+      <ErrorBoundary key={screenKey}>
+        {route.name === 'home' && <HomeScreen go={go} />}
+        {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
+        {route.name === 'settings' && <SettingsScreen go={go} />}
+        {route.name === 'stars' && <StarsScreen go={go} />}
+        {route.name === 'search' && <SearchScreen go={go} />}
+        {route.name === 'countries' && <CountriesScreen go={go} />}
+      </ErrorBoundary>
     </>
   )
 }

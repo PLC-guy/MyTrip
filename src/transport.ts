@@ -1,3 +1,6 @@
+import type { Stop } from './db'
+import type { MapLine } from './MapView'
+
 /**
  * Mezzo usato per arrivare a una tappa dalla precedente. Lo sceglie chi usa
  * l'app: non si deduce. Gli spostamenti dentro una tappa non si registrano.
@@ -20,3 +23,16 @@ export const TRANSPORTS = [
 export type TransportKey = (typeof TRANSPORTS)[number]['key']
 
 export const transportOf = (key?: string) => TRANSPORTS.find((t) => t.key === key)
+
+/**
+ * I tratti dell'itinerario per la mappa, uno per coppia di tappe, col mezzo.
+ * `upTo` limita ai primi tratti (itinerario animato).
+ */
+export function legLines(stops: Pick<Stop, 'id' | 'lat' | 'lon' | 'transport'>[], color: string, upTo = stops.length): MapLine[] {
+  const out: MapLine[] = []
+  for (let i = 1; i < Math.min(upTo, stops.length); i++) {
+    const t = transportOf(stops[i].transport)
+    out.push({ id: stops[i].id, color, points: [[stops[i - 1].lat, stops[i - 1].lon], [stops[i].lat, stops[i].lon]], flight: t?.key === 'plane', icon: t?.icon })
+  }
+  return out
+}

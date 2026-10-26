@@ -214,3 +214,12 @@ textarea.field { min-height: 84px; resize: vertical; }
 .kind-picker button { min-height: 46px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); font-weight: 600; }
 .kind-picker button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .kind-badge { margin-left: 6px; font-size: 0.9rem; }
+
+/* Anteprima del viaggio in Home */
+.trip-item { border-radius: var(--radius); }
+.trip-item.on { box-shadow: 0 0 0 2.5px var(--accent); background: var(--card); }
+.trip-item.on .trip-card { box-shadow: none; }
+.open-trip { width: calc(100% - 20px); margin: 0 10px 10px; }
+.map-chip { position: absolute; top: 10px; left: 10px; max-width: calc(100% - 20px); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--shadow); font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-chip .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.map-chip-x { color: var(--muted); font-weight: 400; margin-left: 4px; }
