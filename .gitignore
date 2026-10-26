@@ -1,0 +1,7 @@
+# Materiale di lavoro che resta solo sul PC (come in MyBsns)
+CLAUDE.md
+dev/
+design/
+graphify-out/
+node_modules/
+dist/
