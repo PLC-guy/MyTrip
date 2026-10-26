@@ -1,8 +1,4 @@
-# Pubblica il sito su GitHub Pages a ogni push su main.
-#
-# Per ora il sito e' statico (la pagina di test): si carica la cartella cosi'
-# com'e'. Quando arrivera' l'app vera con Vite si aggiungeranno npm ci e build,
-# come in MyBsns.
+# Costruisce l'app e la pubblica su GitHub Pages a ogni push su main.
 #
 # ⚠️ Serve, fuori da questo file: Settings › Pages › Source = GitHub Actions.
 name: Pubblica su GitHub Pages
@@ -17,21 +13,36 @@ permissions:
   pages: write
   id-token: write
 
+# Una pubblicazione alla volta, ma senza annullarsi: l'ultimo commit deve
+# arrivare online comunque.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # `npm ci`: installa esattamente il lockfile, quindi online gira la build provata in locale.
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
       - id: deployment
         uses: actions/deploy-pages@v4

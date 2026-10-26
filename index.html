@@ -1,120 +1,26 @@
 <!doctype html>
 <html lang="it">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>MyTrip · test foto</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    :root { color-scheme: light dark; --bg:#f6f7f9; --card:#fff; --fg:#0f172a; --muted:#64748b; --ok:#15803d; --ko:#b91c1c; --line:#e2e8f0; --accent:#2563eb; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --card:#1e293b; --fg:#e2e8f0; --muted:#94a3b8; --ok:#4ade80; --ko:#f87171; --line:#334155; --accent:#60a5fa; } }
-    * { box-sizing: border-box; }
-    body { margin:0; font:16px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--fg);
-           padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
-    h1 { font-size:1.4rem; margin:16px 0 4px; }
-    p.sub { color:var(--muted); margin:0 0 16px; font-size:.95rem; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
-    .btn { display:block; width:100%; text-align:center; padding:14px; border-radius:12px; background:var(--accent); color:#fff;
-           font-weight:600; margin-bottom:8px; cursor:pointer; }
-    .btn.alt { background:transparent; color:var(--accent); border:1.5px solid var(--accent); }
-    .btn small { display:block; font-weight:400; opacity:.85; font-size:.8rem; }
-    input[type=file] { display:none; }
-    #map { height:320px; border-radius:14px; border:1px solid var(--line); margin-bottom:12px; }
-    .res { display:grid; grid-template-columns:72px 1fr; gap:10px; }
-    .res img { width:72px; height:72px; object-fit:cover; border-radius:8px; background:var(--line); }
-    .res dl { margin:0; font-size:.85rem; display:grid; grid-template-columns:auto 1fr; gap:2px 8px; }
-    .res dt { color:var(--muted); } .res dd { margin:0; word-break:break-all; }
-    .ok { color:var(--ok); font-weight:600; } .ko { color:var(--ko); font-weight:600; }
-    .tag { font-size:.75rem; color:var(--muted); }
-    ol { padding-left:20px; margin:0; font-size:.9rem; }
-  </style>
-</head>
-<body>
-  <h1>MyTrip · test foto</h1>
-  <p class="sub">Verifica se Safari ci passa data, ora e posizione GPS delle foto. Nessuna foto lascia il telefono: è tutto letto qui sulla pagina.</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#F4EFE6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#151B1D" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="I tuoi viaggi ricostruiti dalle foto" />
 
-  <div class="card">
-    <label class="btn" for="f-galleria">Scegli dalla Galleria<small>selettore Foto di iOS</small></label>
-    <label class="btn alt" for="f-file">Scegli da File<small>tocca «Sfoglia» / app File</small></label>
-    <input id="f-galleria" type="file" accept="image/*" multiple>
-    <input id="f-file" type="file" multiple>
-  </div>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-  <div id="map"></div>
-  <div id="out"></div>
+    <!-- Senza queste l'app aggiunta alla Home si apre dentro Safari. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- "default" e non "black-translucent": il contenuto parte sotto la barra di
+         stato, quindi niente finisce sotto la fotocamera frontale. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MyTrip" />
 
-  <div class="card">
-    <label class="btn alt" id="copy">Copia i risultati</label>
-    <ol>
-      <li>Prova la stessa foto (scattata all'aperto, con Localizzazione attiva per la Fotocamera) con <b>entrambi</b> i pulsanti.</li>
-      <li>Nel selettore della Galleria cerca in alto un link <b>«Opzioni»</b>: se c'è un interruttore «Posizione», prova acceso e spento.</li>
-      <li>Poi premi «Copia i risultati» e incollali a Claude.</li>
-    </ol>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-  <script>
-    const map = L.map('map').setView([41.9, 12.5], 4)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap'
-    }).addTo(map)
-    const markers = L.featureGroup().addTo(map)
-    const log = []
-
-    const fmtData = (d) => d instanceof Date ? d.toLocaleString('it-IT') : (d ?? '—')
-
-    async function analizza(file, metodo) {
-      let meta = null, errore = null
-      try {
-        meta = await exifr.parse(file, { gps: true, tiff: true, exif: true, xmp: true })
-      } catch (e) { errore = String(e) }
-      const lat = meta?.latitude, lon = meta?.longitude
-      const haGps = typeof lat === 'number' && typeof lon === 'number'
-      const quando = meta?.DateTimeOriginal ?? meta?.CreateDate
-      const r = {
-        metodo, nome: file.name, tipo: file.type || '?', kb: Math.round(file.size / 1024),
-        data: fmtData(quando), gps: haGps ? `${lat.toFixed(5)}, ${lon.toFixed(5)}` : 'ASSENTE',
-        tagGps: meta ? Object.keys(meta).filter(k => /gps|latitude|longitude/i.test(k)).length : 0,
-        modello: [meta?.Make, meta?.Model].filter(Boolean).join(' ') || '—',
-        errore
-      }
-      log.push(r)
-
-      const url = URL.createObjectURL(file)
-      if (haGps) {
-        L.marker([lat, lon]).addTo(markers)
-          .bindPopup(`<img src="${url}" style="width:140px;border-radius:6px"><br>${r.data}`)
-        map.fitBounds(markers.getBounds(), { maxZoom: 15, padding: [30, 30] })
-      }
-      const card = document.createElement('div')
-      card.className = 'card res'
-      card.innerHTML = `<img src="${url}" alt="">
-        <dl>
-          <dt>Metodo</dt><dd>${r.metodo}</dd>
-          <dt>File</dt><dd>${r.nome} <span class="tag">(${r.tipo}, ${r.kb} KB)</span></dd>
-          <dt>Scatto</dt><dd class="${quando ? 'ok' : 'ko'}">${r.data}</dd>
-          <dt>GPS</dt><dd class="${haGps ? 'ok' : 'ko'}">${r.gps}</dd>
-          <dt>Telefono</dt><dd>${r.modello}</dd>
-          ${errore ? `<dt>Errore</dt><dd class="ko">${errore}</dd>` : ''}
-        </dl>`
-      document.getElementById('out').prepend(card)
-    }
-
-    for (const [id, metodo] of [['f-galleria', 'Galleria'], ['f-file', 'File']]) {
-      document.getElementById(id).addEventListener('change', async (e) => {
-        for (const f of e.target.files) await analizza(f, metodo)
-        e.target.value = ''
-      })
-    }
-
-    document.getElementById('copy').addEventListener('click', async () => {
-      const testo = [navigator.userAgent, ...log.map(r =>
-        `${r.metodo} | ${r.nome} | ${r.tipo} | ${r.kb}KB | scatto: ${r.data} | GPS: ${r.gps} | tag gps: ${r.tagGps}${r.errore ? ' | ERR ' + r.errore : ''}`
-      )].join('\n')
-      try { await navigator.clipboard.writeText(testo); alert('Copiato!') }
-      catch { prompt('Copia a mano:', testo) }
-    })
-  </script>
-</body>
+    <title>MyTrip</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

@@ -1,0 +1,149 @@
+/* Stile «diario di viaggio»: carta chiara, inchiostro scuro, verde petrolio e
+   terracotta. Titoli con le grazie (New York su iPhone), testo di sistema. */
+:root {
+  color-scheme: light dark;
+  --bg: #f4efe6;
+  --card: #fffdf9;
+  --ink: #1d2729;
+  --muted: #6c7470;
+  --line: #e4dccd;
+  --accent: #1f5e5b;
+  --accent-ink: #ffffff;
+  --warm: #e07a5f;
+  --danger: #b4432f;
+  --shadow: 0 1px 2px rgb(60 45 20 / 8%), 0 4px 14px rgb(60 45 20 / 7%);
+  --radius: 16px;
+  --serif: ui-serif, 'New York', 'Iowan Old Style', Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151b1d;
+    --card: #1f2729;
+    --ink: #ece6da;
+    --muted: #9aa29d;
+    --line: #2f393b;
+    --accent: #4fb3a9;
+    --accent-ink: #0d1d1c;
+    --warm: #ee8f73;
+    --danger: #f08a73;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 14px rgb(0 0 0 / 25%);
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 16px/1.45 var(--sans); -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+img { display: block; }
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 32px);
+}
+
+/* --- Intestazione --- */
+.bar { display: flex; align-items: center; gap: 8px; min-height: 48px; margin-bottom: 8px; }
+.bar h1 { flex: 1; margin: 0; font: 600 1.6rem/1.15 var(--serif); letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar h1.brand { font-size: 2rem; }
+.icon-btn {
+  width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+  border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--shadow); color: var(--ink);
+}
+.icon-btn svg { width: 20px; height: 20px; }
+
+/* --- Pulsanti --- */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 50px; padding: 12px 16px; border: 0; border-radius: 14px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; text-decoration: none;
+}
+.btn svg { width: 20px; height: 20px; }
+.btn.ghost { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.btn.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1.5px currentColor; }
+.btn:disabled { opacity: 0.5; }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+/* --- Mappa --- */
+.map { position: relative; height: 42dvh; min-height: 240px; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); background: var(--line); z-index: 0; }
+.map.tall { height: 52dvh; }
+.leaflet-container { font: inherit; background: var(--line); }
+.leaflet-control-attribution { font-size: 10px; }
+.pin { width: 46px; height: 46px; border-radius: 12px; border: 3px solid var(--c); background: var(--card); overflow: hidden; box-shadow: 0 3px 10px rgb(0 0 0 / 30%); position: relative; }
+.pin img { width: 100%; height: 100%; object-fit: cover; }
+.pin.star::after { content: '★'; position: absolute; top: -2px; right: 1px; color: #ffd166; font-size: 15px; text-shadow: 0 0 3px rgb(0 0 0 / 70%); }
+.pin.focus { transform: scale(1.18); z-index: 1000; }
+.pin-n { position: absolute; bottom: 1px; right: 2px; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 0 3px rgb(0 0 0 / 80%); }
+
+/* --- Schede viaggio --- */
+.section-title { margin: 24px 0 10px; font: 600 1.15rem/1.2 var(--serif); }
+.trips { display: grid; gap: 12px; }
+.trip-card { display: flex; gap: 12px; align-items: center; width: 100%; padding: 10px; text-align: left; border: 0; border-radius: var(--radius); background: var(--card); box-shadow: var(--shadow); }
+.trip-card .cover { width: 72px; height: 72px; flex: none; border-radius: 12px; background: var(--line); object-fit: cover; }
+.trip-card .cover.empty { display: grid; place-items: center; color: var(--muted); }
+.trip-card .cover.empty svg { width: 28px; height: 28px; }
+.trip-card h3 { margin: 0 0 2px; font: 600 1.1rem/1.2 var(--serif); }
+.trip-card .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.meta { color: var(--muted); font-size: 0.88rem; }
+
+/* --- Cronologia del viaggio --- */
+.day { margin: 22px 0 8px; display: flex; align-items: baseline; gap: 8px; }
+.day b { font: 600 1.05rem/1.2 var(--serif); }
+.day span { color: var(--muted); font-size: 0.88rem; }
+.stop { display: flex; gap: 12px; width: 100%; padding: 10px; margin-bottom: 8px; text-align: left; border: 0; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); align-items: center; }
+.stop .time { width: 44px; flex: none; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--accent); }
+.stop .body { flex: 1; min-width: 0; }
+.stop .place { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop .strip { display: flex; gap: 4px; margin-top: 6px; }
+.stop .strip img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--line); }
+.stop .star { color: #e0a800; }
+
+.empty-state { text-align: center; padding: 32px 16px; color: var(--muted); }
+.empty-state h2 { color: var(--ink); font: 600 1.3rem/1.2 var(--serif); margin: 0 0 6px; }
+.empty-state p { margin: 0 0 18px; }
+
+.note-box { padding: 12px 14px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); margin-bottom: 12px; font-size: 0.92rem; }
+.note-box.warm { background: color-mix(in srgb, var(--warm) 14%, var(--card)); box-shadow: none; }
+.banner { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 8px); z-index: 2000; max-width: 728px; margin: 0 auto; }
+
+/* --- Foglio dal basso --- */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 1500; background: rgb(0 0 0 / 40%); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.15s ease-out; }
+.sheet {
+  width: 100%; max-width: 760px; max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); border-radius: 22px 22px 0 0;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 20px);
+  animation: rise 0.2s ease-out;
+}
+.sheet .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+.sheet h2 { margin: 0 0 4px; font: 600 1.35rem/1.2 var(--serif); }
+.sheet .stack { display: grid; gap: 10px; margin-top: 16px; }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+@keyframes fade { from { opacity: 0; } }
+
+.field { width: 100%; padding: 13px 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); outline: none; }
+.field:focus { border-color: var(--accent); }
+textarea.field { min-height: 84px; resize: vertical; }
+
+.progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 6px; }
+.progress div { height: 100%; background: var(--accent); transition: width 0.2s; }
+
+/* --- Dettaglio tappa --- */
+.gallery { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 12px -16px 0; padding: 0 16px 4px; scrollbar-width: none; }
+.gallery::-webkit-scrollbar { display: none; }
+.shot { flex: 0 0 auto; scroll-snap-align: center; position: relative; }
+.shot img { height: 46dvh; max-width: calc(100vw - 48px); width: auto; border-radius: 14px; object-fit: cover; background: var(--line); }
+.shot .cap { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.85rem; color: var(--muted); }
+.shot .cap button { border: 0; background: none; color: var(--muted); padding: 4px; }
+.shot .cap svg { width: 18px; height: 18px; }
+.star-btn { border: 0; background: none; font-size: 1.6rem; line-height: 1; padding: 4px; color: var(--muted); }
+.star-btn.on { color: #e0a800; }
+
+.list { border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
+.list > * { display: flex; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.list > *:last-child { border-bottom: 0; }
+.list .k { color: var(--muted); }
+.small { font-size: 0.85rem; color: var(--muted); }
+.hidden-input { display: none; }
