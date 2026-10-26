@@ -1,6 +1,6 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import maplibregl from 'maplibre-gl'
-import type { FeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 export interface MapPin {
@@ -8,7 +8,7 @@ export interface MapPin {
   lat: number
   lon: number
   color: string
-  /** Miniatura: se manca, il punto è un pallino colorato. */
+  /** Miniatura: se manca, il punto è solo un pallino colorato. */
   img?: string
   count?: number
   star?: boolean
@@ -63,18 +63,124 @@ function localize(map: maplibregl.Map) {
 }
 
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] }
+const INK = '#1C2B24'
+
+/**
+ * PUNTATORI
+ *
+ * Ogni tappa ha un pallino nel punto ESATTO dello scatto, sempre visibile: il
+ * percorso finisce sempre su un punto. Sopra c'è la miniatura con una punta
+ * che indica il pallino.
+ *
+ * ⚠️ Le miniature sono un livello «symbol» della mappa e non elementi HTML:
+ * così la mappa nasconde da sola quelle che si sovrapporrebbero e le fa
+ * ricomparire avvicinandosi, come l'app Foto. Con gli elementi HTML (0.4.x)
+ * restavano tutte visibili e riempivano la mappa. Hanno la precedenza la tappa
+ * aperta, poi le ★, poi quelle con più foto.
+ */
+const PIN = 44 // lato della miniatura, in punti
+const TIP = 7 // altezza della punta
+const RATIO = 2 // densità del disegno (schermi retina)
+
+const pinImageId = (p: MapPin) => `p|${p.img}|${p.color}|${p.star ? 1 : 0}|${p.count ?? 1}`
+const legImageId = (icon: string) => `t|${icon}`
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+/** Disegna la miniatura con bordo, punta, ★ e numero di foto. */
+async function drawPin(p: MapPin): Promise<ImageData> {
+  const img = new Image()
+  img.src = p.img!
+  await img.decode()
+  const s = RATIO
+  const canvas = document.createElement('canvas')
+  canvas.width = PIN * s
+  canvas.height = (PIN + TIP) * s
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(s, s)
+  // Bordo e punta
+  ctx.fillStyle = p.color
+  roundRect(ctx, 0, 0, PIN, PIN, 8)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(PIN / 2 - 6, PIN - 1)
+  ctx.lineTo(PIN / 2, PIN + TIP)
+  ctx.lineTo(PIN / 2 + 6, PIN - 1)
+  ctx.fill()
+  // Foto ritagliata al quadrato
+  ctx.save()
+  roundRect(ctx, 3, 3, PIN - 6, PIN - 6, 6)
+  ctx.clip()
+  const side = Math.min(img.naturalWidth, img.naturalHeight)
+  ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 3, 3, PIN - 6, PIN - 6)
+  ctx.restore()
+  if (p.count && p.count > 1) {
+    ctx.fillStyle = INK
+    roundRect(ctx, PIN - 19, PIN - 16, 16, 13, 6.5)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.font = '700 9px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(p.count > 99 ? '99' : String(p.count), PIN - 11, PIN - 9.5)
+  }
+  if (p.star) {
+    ctx.fillStyle = '#E3A02B'
+    ctx.beginPath()
+    ctx.arc(PIN - 7, 7, 7, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.font = '700 10px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('★', PIN - 7, 7.5)
+  }
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
+
+/** Icona del mezzo: l'emoji su un dischetto chiaro. */
+function drawLegIcon(icon: string): ImageData {
+  const size = 26
+  const s = RATIO
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size * s
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(s, s)
+  ctx.fillStyle = '#F5F0E6'
+  ctx.strokeStyle = 'rgba(28,43,36,.25)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.font = '14px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(icon, size / 2, size / 2 + 1)
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
 
 export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fitMaxZoom = 15, fitPoints, countries, children }: Props) {
-  const icons = useRef<maplibregl.Marker[]>([])
-  const countriesRef = useRef(countries)
-  countriesRef.current = countries
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
-  const markers = useRef<maplibregl.Marker[]>([])
+  const [ready, setReady] = useState(false)
+  const loading = useRef(new Set<string>())
   const onPinRef = useRef(onPin)
   onPinRef.current = onPin
-  const linesRef = useRef(lines)
-  linesRef.current = lines
+  const countriesRef = useRef(countries)
+  countriesRef.current = countries
+  const pinsRef = useRef(pins)
+  pinsRef.current = pins
+  const focusRef = useRef(focusId)
+  focusRef.current = focusId
 
   useEffect(() => {
     const m = new maplibregl.Map({
@@ -89,35 +195,66 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
       touchPitch: false,
     })
     m.touchZoomRotate.disableRotation()
-    // I crediti della mappa partono chiusi (resta la «i» per aprirli): aperti
-    // coprirebbero il fondo della mappa sul telefono.
+    // I crediti della mappa partono chiusi (resta la «i» per aprirli).
     // ⚠️ 'idle' e non 'load': i crediti arrivano con i dati delle tile, dopo il
     // caricamento dello stile, e in quel momento il riquadro si riapre da solo.
     m.once('idle', () => el.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'))
     m.on('style.load', () => {
       localize(m)
-      m.addSource('route', { type: 'geojson', data: toGeoJson(linesRef.current) })
-      // Due livelli e non uno: il tratteggio non può cambiare da tratto a tratto.
-      const paint: maplibregl.LineLayerSpecification['paint'] = { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85 }
+      m.addSource('route', { type: 'geojson', data: EMPTY })
+      m.addSource('legs', { type: 'geojson', data: EMPTY })
+      m.addSource('pins', { type: 'geojson', data: EMPTY })
+      // Due livelli per il percorso: il tratteggio non può cambiare da tratto a tratto.
+      const paint: maplibregl.LineLayerSpecification['paint'] = { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9 }
+      m.addLayer({ id: 'route', type: 'line', source: 'route', filter: ['!', ['get', 'flight']], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { ...paint, 'line-dasharray': [0.1, 2] } })
+      m.addLayer({ id: 'route-flight', type: 'line', source: 'route', filter: ['==', ['get', 'flight'], true], paint: { ...paint, 'line-width': 2, 'line-dasharray': [4, 3] } })
       m.addLayer({
-        id: 'route',
-        type: 'line',
-        source: 'route',
-        filter: ['!', ['get', 'flight']],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { ...paint, 'line-dasharray': [0.1, 2.2] },
+        id: 'pin-dots',
+        type: 'circle',
+        source: 'pins',
+        paint: {
+          'circle-radius': ['case', ['get', 'thumb'], 4.5, 6.5],
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
       })
+      // I mezzi cedono il posto alle miniature: livello sotto, quindi piazzato dopo.
+      m.addLayer({ id: 'legs', type: 'symbol', source: 'legs', layout: { 'icon-image': ['get', 'icon'], 'icon-padding': 2 } })
       m.addLayer({
-        id: 'route-flight',
-        type: 'line',
-        source: 'route',
-        filter: ['==', ['get', 'flight'], true],
-        layout: { 'line-cap': 'butt' },
-        paint: { ...paint, 'line-width': 2, 'line-dasharray': [4, 3] },
+        id: 'pin-thumbs',
+        type: 'symbol',
+        source: 'pins',
+        filter: ['has', 'icon'],
+        layout: {
+          'icon-image': ['get', 'icon'],
+          'icon-anchor': 'bottom',
+          'icon-offset': [0, -3],
+          'icon-padding': 3,
+          'symbol-sort-key': ['get', 'rank'],
+          'icon-size': 1,
+        },
       })
       if (countriesRef.current) void addCountries(m, countriesRef.current)
+      setReady(true)
+    })
+    // Tocco: si cerca un puntatore in un quadrato attorno al dito, perché i
+    // pallini sono piccoli da centrare.
+    m.on('click', (e) => {
+      const { x, y } = e.point
+      const hit = m.queryRenderedFeatures(
+        [
+          [x - 14, y - 14],
+          [x + 14, y + 14],
+        ],
+        { layers: ['pin-thumbs', 'pin-dots'] },
+      )[0]
+      const id = hit?.properties?.id as string | undefined
+      if (id) onPinRef.current?.(id)
     })
     map.current = m
+    // Solo in sviluppo: la mappa raggiungibile dalla console, per le prove.
+    if (import.meta.env.DEV) (window as unknown as { __map?: maplibregl.Map }).__map = m
     const ro = new ResizeObserver(() => m.resize())
     ro.observe(el.current!)
     return () => {
@@ -127,56 +264,53 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
     }
   }, [])
 
+  // Percorso e icone dei mezzi.
   useEffect(() => {
     const m = map.current
-    const source = m?.getSource('route') as maplibregl.GeoJSONSource | undefined
-    source?.setData(toGeoJson(lines))
-    // Icone dei mezzi a metà di ogni tratto.
-    for (const mk of icons.current) mk.remove()
-    icons.current = []
-    if (!m) return
+    if (!m || !ready) return
+    ;(m.getSource('route') as maplibregl.GeoJSONSource).setData(toGeoJson(lines))
     for (const l of lines) {
-      if (!l.icon || l.points.length !== 2) continue
-      const [[aLat, aLon], [bLat, bLon]] = l.points
-      const node = document.createElement('div')
-      node.className = 'transport-pin'
-      node.textContent = l.icon
-      icons.current.push(new maplibregl.Marker({ element: node }).setLngLat([(aLon + bLon) / 2, (aLat + bLat) / 2]).addTo(m))
+      if (l.icon && !m.hasImage(legImageId(l.icon))) m.addImage(legImageId(l.icon), drawLegIcon(l.icon), { pixelRatio: RATIO })
     }
-  }, [lines])
+    const legs: Feature[] = lines
+      .filter((l) => l.icon && l.points.length === 2)
+      .map((l) => {
+        const [[aLat, aLon], [bLat, bLon]] = l.points
+        return { type: 'Feature', properties: { icon: legImageId(l.icon!) }, geometry: { type: 'Point', coordinates: [(aLon + bLon) / 2, (aLat + bLat) / 2] } }
+      })
+    ;(m.getSource('legs') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: legs })
+  }, [lines, ready])
 
+  // Puntatori. Le miniature si disegnano in sottofondo: finché non sono pronte
+  // si vede solo il pallino, poi la miniatura compare.
   useEffect(() => {
     const m = map.current
-    if (!m) return
-    for (const mk of markers.current) mk.remove()
-    markers.current = pins.map((pin) => {
-      const node = document.createElement('div')
-      if (pin.img) {
-        node.className = `pin${pin.star ? ' star' : ''}${pin.id === focusId ? ' focus' : ''}`
-        node.style.setProperty('--c', pin.color)
-        const img = document.createElement('img')
-        img.src = pin.img
-        img.alt = ''
-        node.append(img)
-        if (pin.count && pin.count > 1) {
-          const n = document.createElement('span')
-          n.className = 'pin-n'
-          n.textContent = String(pin.count)
-          node.append(n)
-        }
-      } else {
-        node.className = 'dot-pin'
-        node.style.background = pin.color
-      }
-      node.addEventListener('click', (e) => {
-        e.stopPropagation()
-        onPinRef.current?.(pin.id)
-      })
-      const marker = new maplibregl.Marker({ element: node }).setLngLat([pin.lon, pin.lat]).addTo(m)
-      if (pin.id === focusId) node.style.zIndex = '10'
-      return marker
-    })
-  }, [pins, focusId])
+    if (!m || !ready) return
+    let cancelled = false
+    const refresh = () => {
+      if (cancelled) return
+      ;(m.getSource('pins') as maplibregl.GeoJSONSource).setData(pinsGeoJson(m, pinsRef.current, focusRef.current))
+    }
+    refresh()
+    for (const p of pins) {
+      if (!p.img) continue
+      const id = pinImageId(p)
+      if (m.hasImage(id) || loading.current.has(id)) continue
+      loading.current.add(id)
+      void drawPin(p)
+        .then((data) => {
+          if (!m.hasImage(id)) m.addImage(id, data, { pixelRatio: RATIO })
+          refresh()
+        })
+        .catch(() => {})
+        .finally(() => loading.current.delete(id))
+    }
+    // La tappa aperta un po' più grande, e sempre in vista.
+    m.setLayoutProperty('pin-thumbs', 'icon-size', ['case', ['==', ['get', 'id'], focusId ?? ''], 1.25, 1])
+    return () => {
+      cancelled = true
+    }
+  }, [pins, focusId, ready])
 
   // Si riadatta solo quando cambia l'insieme dei punti, non a ogni ridisegno:
   // altrimenti ogni nota o stellina farebbe saltare la vista.
@@ -186,8 +320,8 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
     if (!m || points.length === 0) return
     const bounds = new maplibregl.LngLatBounds()
     for (const p of points) bounds.extend([p.lon, p.lat])
-    // Più spazio sopra (etichetta del viaggio, pulsante ▶) e sotto (crediti, didascalia).
-    m.fitBounds(bounds, { padding: { top: 70, bottom: 60, left: 45, right: 45 }, maxZoom: fitMaxZoom, duration: 0 })
+    // Più spazio sopra (miniature con la punta, etichette) e sotto (crediti, didascalia).
+    m.fitBounds(bounds, { padding: { top: 80, bottom: 50, left: 40, right: 40 }, maxZoom: fitMaxZoom, duration: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey])
 
@@ -205,6 +339,23 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
       {children}
     </div>
   )
+}
+
+/** Punti per la mappa; `icon` solo se la miniatura è già pronta. */
+function pinsGeoJson(m: maplibregl.Map, pins: MapPin[], focusId?: string): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: pins.map((p) => {
+      const icon = p.img ? pinImageId(p) : undefined
+      // Più basso = piazzato prima = vince sulle altre.
+      const rank = p.id === focusId ? 0 : (p.star ? 1000 : 2000) - Math.min(p.count ?? 1, 999)
+      return {
+        type: 'Feature',
+        properties: { id: p.id, color: p.color, thumb: !!p.img, rank, ...(icon && m.hasImage(icon) ? { icon } : {}) },
+        geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+      }
+    }),
+  }
 }
 
 /**

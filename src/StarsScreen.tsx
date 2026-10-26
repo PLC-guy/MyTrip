@@ -64,7 +64,7 @@ export default function StarsScreen({ go }: { go: (r: Route) => void }) {
 
       <div style={{ marginTop: 12 }}>
         {rows?.map((r) => (
-          <button key={r.stop.id} className="stop" onClick={() => open(r)}>
+          <button key={r.stop.id} className="stop compact" onClick={() => open(r)}>
             {r.cover && <img className="thumb" src={thumbUrl(r.cover)} alt="" />}
             <span className="body">
               <span className="place" style={{ display: 'block' }}>

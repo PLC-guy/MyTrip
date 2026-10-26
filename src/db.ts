@@ -113,8 +113,21 @@ db.version(1).stores({
   photos: 'id, tripId, stopId, key, [tripId+time]',
 })
 
-/** Colori assegnati ai viaggi, a rotazione. */
-export const TRIP_COLORS = ['#E07A5F', '#3D8B85', '#8E6CB4', '#D4A03A', '#4A7BB7', '#C2577A', '#6A994E']
+/** Colori dei viaggi, a rotazione: la palette del sito di Greta (tè, blu, laterite, zafferano…). */
+export const TRIP_COLORS = ['#2F6B4F', '#1F4E8C', '#A3432A', '#C98A1B', '#6B4F8C', '#2F8C86', '#8C5A2F']
+
+/**
+ * Vecchia palette (fino alla 0.4.1) → nuova, alla stessa posizione. I viaggi
+ * creati prima si ricolorano una volta all'avvio (`recolorTrips`).
+ */
+const OLD_COLORS = ['#E07A5F', '#3D8B85', '#8E6CB4', '#D4A03A', '#4A7BB7', '#C2577A', '#6A994E']
+
+export async function recolorTrips(): Promise<void> {
+  await db.trips.toCollection().modify((t) => {
+    const i = OLD_COLORS.indexOf(t.color)
+    if (i >= 0) t.color = TRIP_COLORS[i]
+  })
+}
 
 export function newId(): string {
   return crypto.randomUUID()

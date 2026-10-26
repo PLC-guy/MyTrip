@@ -16,6 +16,8 @@ interface TripRow {
   stops: Stop[]
   cover?: { id: string; thumb: Blob }
   photos: number
+  /** Paesi del viaggio, in ordine di visita. */
+  countries: string[]
 }
 
 /** iPhone fuori dall'app installata: i dati del browser sono un archivio a parte. */
@@ -38,7 +40,9 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
           : ((trip.coverPhotoId ? await db.photos.get(trip.coverPhotoId) : undefined) ??
             (await db.photos.where('[tripId+time]').between([trip.id, Dexie.minKey], [trip.id, Dexie.maxKey]).first()))
       const photos = await db.photos.where('tripId').equals(trip.id).count()
-      out.push({ trip, stops: stops.filter((s) => s.tripId === trip.id), cover, photos })
+      const own = stops.filter((s) => s.tripId === trip.id)
+      const countries = [...new Set(own.map((s) => s.country).filter((c): c is string => !!c))]
+      out.push({ trip, stops: own, cover, photos, countries })
     }
     // Il più recente in alto; i viaggi appena creati e ancora vuoti sopra tutti.
     const when = (r: TripRow) => (r.stops.length ? r.stops[r.stops.length - 1].end : Number.MAX_SAFE_INTEGER - (Date.now() - r.trip.createdAt))
@@ -106,6 +110,16 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
           <IconGear />
         </button>
       </div>
+      {rows.length > 0 && (
+        <p className="subtitle">
+          {plural(rows.length, 'viaggio', 'viaggi')} · {plural(new Set(rows.flatMap((r) => r.countries)).size, 'paese', 'paesi')} ·{' '}
+          {plural(
+            rows.reduce((n, r) => n + r.stops.length, 0),
+            'tappa',
+            'tappe',
+          )}
+        </p>
+      )}
 
       {rows.length > 0 && (
         <div className="shortcuts">
@@ -160,29 +174,45 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
       <div className="trips">
         {rows.map((r) => (
           <div key={r.trip.id} className={`trip-item${r.trip.id === selected ? ' on' : ''}`}>
+          {/* Scheda come quelle del sito: etichetta in maiuscoletto, titolo, separatore, dati in colonne. */}
           <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
-            {r.cover ? (
-              <img className="cover" src={thumbUrl(r.cover)} alt="" />
-            ) : (
-              <div className="cover empty">
-                <IconPhotos />
-              </div>
-            )}
-            <div>
-              <h3>
+            <div className="trip-head">
+              <span className="label">
                 <span className="dot" style={{ background: r.trip.color }} />
-                {r.trip.name}
-                {r.trip.kind === 'lavoro' && <span className="kind-badge" title="Viaggio di lavoro">💼</span>}
-              </h3>
-              <div className="meta">
-                {r.stops.length ? fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first) : 'Ancora nessuna foto'}
-              </div>
-              {r.stops.length > 0 && (
-                <div className="meta">
-                  {plural(r.stops.length, 'tappa', 'tappe')} · {plural(r.photos, 'foto', 'foto')}
+                {r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
+                {r.stops.length ? ` · ${r.stops[0].first.slice(0, 4)}` : ''}
+              </span>
+              {r.countries.length > 0 && <span className="label soft">{r.countries.join(' · ')}</span>}
+            </div>
+            <div className="trip-main">
+              <h3>{r.trip.name}</h3>
+              {r.cover ? (
+                <img className="cover" src={thumbUrl(r.cover)} alt="" />
+              ) : (
+                <div className="cover" style={{ display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
+                  <IconPhotos />
                 </div>
               )}
             </div>
+            <hr className="rule" />
+            {r.stops.length ? (
+              <div className="facts">
+                <div>
+                  <span className="label soft">Date</span>
+                  <b>{fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
+                </div>
+                <div>
+                  <span className="label soft">Tappe</span>
+                  <b>{r.stops.length}</b>
+                </div>
+                <div>
+                  <span className="label soft">Foto</span>
+                  <b>{r.photos}</b>
+                </div>
+              </div>
+            ) : (
+              <span className="meta">Ancora nessuna foto: tocca per aggiungerle</span>
+            )}
           </button>
           {r.trip.id === selected && (
             <button className="btn open-trip" onClick={() => go({ name: 'trip', id: r.trip.id })}>

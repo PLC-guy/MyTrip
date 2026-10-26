@@ -18,7 +18,7 @@ const targets = [
 for (const { file, size } of targets) {
   // iOS arrotonda da solo gli angoli: lo sfondo deve arrivare fino al bordo,
   // altrimenti compaiono angoli bianchi.
-  const png = await sharp(svg).resize(size, size).flatten({ background: '#1F5E5B' }).png().toBuffer()
+  const png = await sharp(svg).resize(size, size).flatten({ background: '#2F6B4F' }).png().toBuffer()
   await writeFile(join(publicDir, file), png)
   console.log(`${file} (${size}x${size})`)
 }

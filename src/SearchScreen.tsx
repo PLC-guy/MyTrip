@@ -48,7 +48,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
         <>
           <h2 className="section-title">Viaggi</h2>
           {results.trips.map((t) => (
-            <button key={t.id} className="stop" onClick={() => go({ name: 'trip', id: t.id })}>
+            <button key={t.id} className="stop compact" onClick={() => go({ name: 'trip', id: t.id })}>
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
                   <span className="dot" style={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: t.color, marginRight: 6 }} />
@@ -64,7 +64,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
         <>
           <h2 className="section-title">Tappe</h2>
           {results.stops.slice(0, 100).map(({ stop, trip, why }) => (
-            <button key={stop.id} className="stop" onClick={() => go({ name: 'trip', id: trip.id, stop: stop.id })}>
+            <button key={stop.id} className="stop compact" onClick={() => go({ name: 'trip', id: trip.id, stop: stop.id })}>
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
                   {stop.star && <span className="star">★ </span>}
@@ -85,7 +85,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
         <>
           <h2 className="section-title">Diario</h2>
           {results.diary.map((d) => (
-            <button key={d.trip.id + d.day} className="stop" onClick={() => go({ name: 'trip', id: d.trip.id })}>
+            <button key={d.trip.id + d.day} className="stop compact" onClick={() => go({ name: 'trip', id: d.trip.id })}>
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
                   {d.trip.name} · {fmtDayLong(d.day + 'T12:00:00')}

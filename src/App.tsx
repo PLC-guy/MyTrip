@@ -8,6 +8,7 @@ import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
 import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
+import { recolorTrips } from './db'
 import { reloadLoopDetected } from './reloadGuard'
 import { applyUpdate, startAutoUpdate } from './update'
 
@@ -59,6 +60,7 @@ export default function App() {
     void navigator.storage?.persist?.()
     void geocodePending()
     void weatherPending()
+    void recolorTrips()
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 

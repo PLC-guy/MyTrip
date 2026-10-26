@@ -58,7 +58,7 @@ export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
           lines={[]}
           fitKey={codes.join(',')}
           fitMaxZoom={4}
-          countries={{ codes, color: '#E07A5F' }}
+          countries={{ codes, color: '#2F6B4F' }}
         />
       )}
 

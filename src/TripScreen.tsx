@@ -270,6 +270,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         </>
       )}
 
+      {days.length > 0 && <h2 className="section-title">Le tappe</h2>}
+      <div className="timeline">
       {days.map((d, i) => (
         <section key={d.day}>
           <div className="day">
@@ -289,29 +291,34 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               <Fragment key={s.id}>
                 {from && (
                   <button className={`leg${t ? ' set' : ''}`} onClick={() => setPanel({ kind: 'transport', stop: s, from })}>
-                    <span className="leg-line" />
                     <span className="leg-label">
                       {t ? `${t.icon} ${t.label}` : '+ mezzo'} · {fmtKm(distanceM(from.lat, from.lon, s.lat, s.lon) / 1000)}
                     </span>
                   </button>
                 )}
                 <button className="stop" onClick={() => openAt(s.id)}>
-                  <span className="time">{fmtTime(s.first)}</span>
-                  <span className="body">
-                    <span className="place" style={{ display: 'block' }}>
-                      {s.star && <span className="star">★ </span>}
+                  <span className="stop-head">
+                    <span className="label">
+                      {fmtTime(s.first)} · {plural(photos.length, 'foto', 'foto')}
+                    </span>
+                    {w && s.weather && (
+                      <span className="label soft">
+                        {w.icon} {s.weather.temp}°
+                      </span>
+                    )}
+                  </span>
+                  <span className="stop-title">
+                    <span className="n">{String(idx + 1).padStart(2, '0')}</span>
+                    <b>
                       {stopTitle(s)}
-                    </span>
-                    <span className="meta">
-                      {plural(photos.length, 'foto', 'foto')}
-                      {w && s.weather ? ` · ${w.icon} ${s.weather.temp}°` : ''}
-                      {s.note ? ' · ' + s.note : ''}
-                    </span>
-                    <span className="strip">
-                      {photos.slice(0, 5).map((p) => (
-                        <img key={p.id} src={thumbUrl(p)} alt="" loading="lazy" />
-                      ))}
-                    </span>
+                      {s.star && <span className="star"> ★</span>}
+                    </b>
+                  </span>
+                  {s.note && <span className="note">{s.note}</span>}
+                  <span className="strip">
+                    {photos.slice(0, 6).map((p) => (
+                      <img key={p.id} src={thumbUrl(p)} alt="" loading="lazy" />
+                    ))}
                   </span>
                 </button>
               </Fragment>
@@ -319,6 +326,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           })}
         </section>
       ))}
+      </div>
 
       {stop && (
         <StopSheet
