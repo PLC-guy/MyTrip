@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip, type Photo, type Stop } from './db'
 import { dayOf, fmtDayLong, fmtRange, fmtTime, plural } from './format'
@@ -16,6 +16,8 @@ import type { Route } from './App'
 
 type Panel =
   | { kind: 'none' }
+  /** Selettore di iOS aperto: dopo «Aggiungi» iOS prepara le foto prima di consegnarle. */
+  | { kind: 'picking' }
   | { kind: 'import'; progress: ImportProgress; report?: ImportReport }
   | { kind: 'menu' }
   | { kind: 'cover' }
@@ -35,6 +37,17 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
     const photos = await db.photos.where('tripId').equals(id).sortBy('time')
     return { trip, stops, photos }
   }, [id])
+
+  // Selezione annullata nel selettore di iOS: si toglie l'avviso di attesa.
+  // (React non inoltra l'evento `cancel` degli input, si ascolta a mano.)
+  const ready = data !== undefined
+  useEffect(() => {
+    const el = input.current
+    if (!el) return
+    const onCancel = () => setPanel((p) => (p.kind === 'picking' ? { kind: 'none' } : p))
+    el.addEventListener('cancel', onCancel)
+    return () => el.removeEventListener('cancel', onCancel)
+  }, [ready])
 
   const byStop = useMemo(() => {
     const map = new Map<string, Photo[]>()
@@ -82,9 +95,14 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? [])
     if (input.current) input.current.value = ''
-    if (files.length === 0) return
+    if (files.length === 0) {
+      setPanel({ kind: 'none' })
+      return
+    }
     setBusy(true)
     setPanel({ kind: 'import', progress: { done: 0, total: files.length } })
+    // Schermo acceso fino alla fine: se si spegne, iOS sospende l'app a metà.
+    const wake = await navigator.wakeLock?.request('screen').catch(() => undefined)
     try {
       const report = await importPhotos(id, files, (progress) => setPanel({ kind: 'import', progress }))
       setPanel({ kind: 'import', progress: { done: files.length, total: files.length }, report })
@@ -94,6 +112,7 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
       setPanel({ kind: 'none' })
       setError(`Import non riuscito: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
+      void wake?.release().catch(() => {})
       setBusy(false)
     }
   }
@@ -157,7 +176,18 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
       <div style={{ marginTop: 14 }}>
         <label className="btn">
           <IconPhotos /> Aggiungi foto
-          <input ref={input} className="hidden-input" type="file" accept="image/*" multiple onChange={(e) => void onFiles(e.target.files)} />
+          {/* ⚠️ image/heic dichiarato apposta: se la pagina accetta l'HEIC, iOS
+              consegna gli originali senza convertirli prima in JPEG. Con 70
+              foto la conversione teneva il selettore bloccato a lungo. */}
+          <input
+            ref={input}
+            className="hidden-input"
+            type="file"
+            accept="image/*,image/heic,image/heif"
+            multiple
+            onClick={() => setPanel({ kind: 'picking' })}
+            onChange={(e) => void onFiles(e.target.files)}
+          />
         </label>
       </div>
 
@@ -202,6 +232,23 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
 
       {stop && <StopSheet stop={stop} photos={byStop.get(stop.id) ?? []} color={trip.color} onClose={() => setOpenStop(undefined)} />}
 
+      {panel.kind === 'picking' && (
+        <Sheet locked onClose={() => {}}>
+          <h2>Scegli le foto…</h2>
+          <p className="small" style={{ marginTop: 8 }}>
+            Dopo aver toccato «Aggiungi», iOS prepara le foto prima di passarle all'app: se sono tante, o se sono su iCloud, può volerci un po'. Attendi senza chiudere: l'import parte da solo.
+          </p>
+          <div className="progress">
+            <div className="indeterminate" />
+          </div>
+          <div className="stack">
+            <button className="btn ghost" onClick={() => setPanel({ kind: 'none' })}>
+              Non ho scelto nessuna foto
+            </button>
+          </div>
+        </Sheet>
+      )}
+
       {panel.kind === 'import' && (
         <Sheet locked={importing} onClose={() => setPanel({ kind: 'none' })}>
           {!panel.report ? (
@@ -211,7 +258,10 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
                 <div style={{ width: `${(panel.progress.done / Math.max(1, panel.progress.total)) * 100}%` }} />
               </div>
               <p className="small">
-                {panel.progress.done} di {panel.progress.total}. Tieni l'app aperta fino alla fine.
+                {panel.progress.done} di {panel.progress.total}
+              </p>
+              <p className="note-box warm" style={{ marginTop: 12 }}>
+                Tieni l'app aperta finché non finisce: se passi a un'altra app, iOS può interrompere l'import. Le foto già lette restano salvate.
               </p>
             </>
           ) : (

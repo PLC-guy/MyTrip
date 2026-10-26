@@ -10,6 +10,9 @@ import { makeThumb } from './thumb'
 export const STOP_RADIUS_M = 150
 export const STOP_GAP_MS = 60 * 60 * 1000
 
+/** Foto lette prima di salvarle nell'archivio. */
+const BATCH = 10
+
 export interface ImportProgress {
   done: number
   total: number
@@ -43,9 +46,22 @@ export async function importPhotos(
   onProgress: (p: ImportProgress) => void,
 ): Promise<ImportReport> {
   const report: ImportReport = { added: 0, duplicates: 0, rejected: [] }
-  const ready: Omit<Photo, 'stopId'>[] = []
+  let ready: Omit<Photo, 'stopId'>[] = []
+
+  /**
+   * Si salva a gruppi e non tutto alla fine: se iOS interrompe l'app a metà
+   * (schermo spento, passaggio a un'altra app) le foto già lette restano, e
+   * rifacendo l'import vengono riconosciute come «già presenti».
+   */
+  const flush = async () => {
+    if (ready.length === 0) return
+    await assignToStops(tripId, ready)
+    report.added += ready.length
+    ready = []
+  }
 
   for (let i = 0; i < files.length; i++) {
+    if (ready.length >= BATCH) await flush()
     const file = files[i]
     onProgress({ done: i, total: files.length })
     const result = await readMeta(file)
@@ -66,12 +82,8 @@ export async function importPhotos(
       report.rejected.push({ name: file.name, reason: 'illeggibile' })
     }
   }
+  await flush()
   onProgress({ done: files.length, total: files.length })
-
-  if (ready.length > 0) {
-    await assignToStops(tripId, ready)
-    report.added = ready.length
-  }
   return report
 }
 
