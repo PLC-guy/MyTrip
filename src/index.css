@@ -89,7 +89,14 @@ img { display: block; }
 /* Mappa della Home agganciata in alto: si scorre l'elenco dei viaggi sotto di
    lei e l'anteprima cambia senza dover tornare su. Più bassa che nelle altre
    pagine, per lasciare spazio all'elenco. */
-.home-map { position: sticky; top: env(safe-area-inset-top); z-index: 10; background: var(--bg); padding: 6px 0 10px; margin: -6px 0 0; }
+/* ⚠️ Lo sfondo arriva fino ai bordi dello schermo (margini negativi pari al
+   rientro della pagina): il bordo verde della scheda selezionata sporge di 2px
+   e, passando sotto la mappa, spuntava ai suoi lati (visto su iPhone, 0.5.1). */
+.home-map {
+  position: sticky; top: env(safe-area-inset-top); z-index: 10; background: var(--bg);
+  margin: -6px calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
+  padding: 6px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+}
 .home-map .map { height: 36dvh; min-height: 220px; }
 
 /* --- Scorciatoie della Home --- */
