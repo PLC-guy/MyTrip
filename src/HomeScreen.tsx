@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, TRIP_COLORS, type Photo, type Stop, type Trip } from './db'
+import { db, newId, TRIP_COLORS, type Stop, type Trip } from './db'
 import { fmtRange, plural } from './format'
 import { IconGear, IconPhotos, IconPlus } from './icons'
 import MapView, { type MapLine, type MapPin } from './MapView'
@@ -12,7 +12,7 @@ import type { Route } from './App'
 interface TripRow {
   trip: Trip
   stops: Stop[]
-  cover?: Photo
+  cover?: { id: string; thumb: Blob }
   photos: number
 }
 
@@ -28,7 +28,12 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
     const stops = await db.stops.orderBy('start').toArray()
     const out: TripRow[] = []
     for (const trip of trips) {
-      const cover = await db.photos.where('[tripId+time]').between([trip.id, Dexie.minKey], [trip.id, Dexie.maxKey]).first()
+      // Copertina: immagine caricata apposta, poi foto scelta, poi la prima del viaggio.
+      const cover: TripRow['cover'] =
+        trip.coverImage && trip.coverImageId
+          ? { id: trip.coverImageId, thumb: trip.coverImage }
+          : ((trip.coverPhotoId ? await db.photos.get(trip.coverPhotoId) : undefined) ??
+            (await db.photos.where('[tripId+time]').between([trip.id, Dexie.minKey], [trip.id, Dexie.maxKey]).first()))
       const photos = await db.photos.where('tripId').equals(trip.id).count()
       out.push({ trip, stops: stops.filter((s) => s.tripId === trip.id), cover, photos })
     }

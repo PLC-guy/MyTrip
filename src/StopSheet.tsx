@@ -43,8 +43,8 @@ export default function StopSheet({ stop, photos, color, onClose }: { stop: Stop
 
       <div className="gallery">
         {photos.map((p) => (
-          <figure key={p.id} className="shot" style={{ margin: 0 }}>
-            <img src={thumbUrl(p)} alt="" style={{ aspectRatio: `${p.width} / ${p.height}` }} />
+          <figure key={p.id} className="shot" style={{ margin: 0, ['--r' as string]: p.width / p.height }}>
+            <img src={thumbUrl(p)} alt="" />
             <figcaption className="cap">
               <span>
                 {fmtTime(p.taken)} · {p.name}

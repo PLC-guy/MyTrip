@@ -1,4 +1,5 @@
 import { db, type Photo, type Stop, type Trip } from './db'
+import { forgetThumbs } from './thumbUrl'
 
 /**
  * File di export: un viaggio singolo o il backup di tutti.
@@ -11,13 +12,15 @@ const APP = 'mytrip'
 const FORMAT = 1
 
 type PhotoFile = Omit<Photo, 'thumb'> & { thumb: string }
+/** `coverImage` facoltativo: i file esportati prima della 0.2.0 non lo hanno. */
+type TripFile = Omit<Trip, 'coverImage'> & { coverImage?: string }
 
 interface ExportFile {
   app: typeof APP
   format: number
   kind: 'trip' | 'backup'
   exportedAt: string
-  trips: Trip[]
+  trips: TripFile[]
   stops: Stop[]
   photos: PhotoFile[]
 }
@@ -31,8 +34,18 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-async function dataUrlToBlob(url: string): Promise<Blob> {
-  return (await fetch(url)).blob()
+/**
+ * Decodifica a mano invece di `fetch(dataUrl)`: è sincrona, non passa dalla
+ * rete né dal service worker, e su Safari produce un Blob «normale» che
+ * IndexedDB conserva senza sorprese.
+ */
+function dataUrlToBlob(url: string): Blob {
+  const comma = url.indexOf(',')
+  const type = /^data:([^;,]+)/.exec(url)?.[1] ?? 'image/jpeg'
+  const bin = atob(url.slice(comma + 1))
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type })
 }
 
 async function build(kind: ExportFile['kind'], trips: Trip[]): Promise<ExportFile> {
@@ -41,7 +54,9 @@ async function build(kind: ExportFile['kind'], trips: Trip[]): Promise<ExportFil
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
   const encoded: PhotoFile[] = []
   for (const p of photos) encoded.push({ ...p, thumb: await blobToDataUrl(p.thumb) })
-  return { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips, stops, photos: encoded }
+  const tripFiles: TripFile[] = []
+  for (const t of trips) tripFiles.push({ ...t, coverImage: t.coverImage ? await blobToDataUrl(t.coverImage) : undefined })
+  return { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, photos: encoded }
 }
 
 /** Nome di file sicuro su ogni sistema. */
@@ -107,11 +122,15 @@ export async function importFile(file: File): Promise<ImportSummary> {
     throw new Error("Il file viene da una versione più recente dell'app: aggiornala e riprova.")
   }
 
-  const photos: Photo[] = []
-  for (const p of data.photos) photos.push({ ...p, thumb: await dataUrlToBlob(p.thumb) })
+  const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToBlob(p.thumb) }))
+  const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToBlob(t.coverImage) : undefined }))
+
+  // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
+  // indirizzi in memoria puntano alle immagini di prima.
+  forgetThumbs([...photos.map((p) => p.id), ...trips.flatMap((t) => (t.coverImageId ? [t.coverImageId] : []))])
 
   await db.transaction('rw', db.trips, db.stops, db.photos, async () => {
-    await db.trips.bulkPut(data.trips)
+    await db.trips.bulkPut(trips)
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)
   })

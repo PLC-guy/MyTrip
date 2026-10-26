@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { forgetThumbs } from './thumbUrl'
 
 /**
  * Archivio locale (IndexedDB).
@@ -17,6 +18,15 @@ export interface Trip {
   createdAt: number
   /** Colore del viaggio sulla mappa generale. */
   color: string
+  /**
+   * Copertina scelta a mano: una foto qualsiasi dell'app, anche di un altro
+   * viaggio. Se manca (o la foto è stata tolta) si usa la prima del viaggio.
+   */
+  coverPhotoId?: string
+  /** Oppure un'immagine caricata solo per la copertina: non è una tappa. */
+  coverImage?: Blob
+  /** Cambia a ogni nuova immagine di copertina: serve a non mostrare quella vecchia. */
+  coverImageId?: string
 }
 
 /** Una tappa: foto vicine nello spazio e nel tempo. */
@@ -83,6 +93,8 @@ export function newId(): string {
 
 /** Cancella un viaggio con tutte le sue tappe e foto. */
 export async function deleteTrip(tripId: string): Promise<void> {
+  const trip = await db.trips.get(tripId)
+  forgetThumbs([...(await db.photos.where('tripId').equals(tripId).primaryKeys()), ...(trip?.coverImageId ? [trip.coverImageId] : [])])
   await db.transaction('rw', db.trips, db.stops, db.photos, async () => {
     await db.photos.where('tripId').equals(tripId).delete()
     await db.stops.where('tripId').equals(tripId).delete()
@@ -92,6 +104,7 @@ export async function deleteTrip(tripId: string): Promise<void> {
 
 /** Cancella una foto; la tappa si ricalcola, o sparisce se resta vuota. */
 export async function deletePhoto(photoId: string): Promise<void> {
+  forgetThumbs([photoId])
   await db.transaction('rw', db.stops, db.photos, async () => {
     const photo = await db.photos.get(photoId)
     if (!photo) return

@@ -8,6 +8,7 @@ import { importPhotos, type ImportProgress, type ImportReport } from './importPh
 import MapView, { type MapPin } from './MapView'
 import Sheet from './Sheet'
 import StopSheet from './StopSheet'
+import CoverSheet from './CoverSheet'
 import { thumbUrl } from './thumbUrl'
 import { setBusy } from './update'
 import { deliverFile, exportTrip } from './backup'
@@ -17,6 +18,7 @@ type Panel =
   | { kind: 'none' }
   | { kind: 'import'; progress: ImportProgress; report?: ImportReport }
   | { kind: 'menu' }
+  | { kind: 'cover' }
   | { kind: 'rename'; value: string }
   | { kind: 'delete' }
 
@@ -248,11 +250,14 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
           <h2>{trip.name}</h2>
           <div className="stack">
             <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name })}>Rinomina</button>
+            <button className="btn ghost" onClick={() => setPanel({ kind: 'cover' })}>Scegli la copertina</button>
             <button className="btn ghost" onClick={() => void onExport()} disabled={data.photos.length === 0}>Esporta il viaggio</button>
             <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Elimina il viaggio</button>
           </div>
         </Sheet>
       )}
+
+      {panel.kind === 'cover' && <CoverSheet trip={trip} onClose={() => setPanel({ kind: 'none' })} />}
 
       {panel.kind === 'rename' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })}>

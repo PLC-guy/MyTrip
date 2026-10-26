@@ -134,12 +134,26 @@ textarea.field { min-height: 84px; resize: vertical; }
 .gallery { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 12px -16px 0; padding: 0 16px 4px; scrollbar-width: none; }
 .gallery::-webkit-scrollbar { display: none; }
 .shot { flex: 0 0 auto; scroll-snap-align: center; position: relative; }
-.shot img { height: 46dvh; max-width: calc(100vw - 48px); width: auto; border-radius: 14px; object-fit: cover; background: var(--line); }
+/* Margini automatici e non justify-content: center, che con lo scorrimento
+   orizzontale renderebbe irraggiungibile l'inizio della fila. */
+.shot:first-child { margin-left: auto !important; }
+.shot:last-child { margin-right: auto !important; }
+/* La foto intera, mai ritagliata: alta al massimo 46dvh e larga al massimo lo
+   schermo, con le proporzioni vere (--r = larghezza / altezza). */
+.shot img { width: min(calc(100vw - 48px), calc(46dvh * var(--r)), 712px); height: auto; aspect-ratio: var(--r); border-radius: 14px; object-fit: cover; background: var(--line); }
+.shot .cap { max-width: min(calc(100vw - 48px), calc(46dvh * var(--r)), 712px); }
 .shot .cap { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.85rem; color: var(--muted); }
 .shot .cap button { border: 0; background: none; color: var(--muted); padding: 4px; }
 .shot .cap svg { width: 18px; height: 18px; }
 .star-btn { border: 0; background: none; font-size: 1.6rem; line-height: 1; padding: 4px; color: var(--muted); }
 .star-btn.on { color: #e0a800; }
+
+/* --- Scelta della copertina --- */
+.cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.cover-grid button { padding: 0; border: 0; background: none; }
+.cover-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--line); }
+.cover-grid img.on { outline: 3px solid var(--accent); outline-offset: 2px; }
+.section-title .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 2px; }
 
 .list { border-radius: 14px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; }
 .list > * { display: flex; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); }

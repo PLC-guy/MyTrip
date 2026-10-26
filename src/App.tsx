@@ -43,7 +43,11 @@ export default function App() {
 
   // Ogni schermata si apre dall'inizio. Dopo il disegno: prima, la pagina
   // vecchia (più lunga) riporterebbe giù lo scorrimento.
-  useEffect(() => window.scrollTo(0, 0), [route])
+  // ⚠️ Fra graffe: nei browser recenti scrollTo restituisce una Promise, e
+  // React la prenderebbe per una funzione di pulizia (schermata bianca).
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [route])
 
   const go = (r: Route) => {
     location.hash = writeRoute(r)
