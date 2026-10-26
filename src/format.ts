@@ -41,3 +41,6 @@ export function fmtBytes(bytes: number): string {
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** «45 min», «3 h 05». */
+export const fmtDuration = (min: number) => (min < 60 ? `${Math.round(min)} min` : `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`)

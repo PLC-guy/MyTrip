@@ -1,6 +1,7 @@
 import { db, stopTitle } from './db'
 import { fmtDateTime } from './format'
 import { transportOf } from './transport'
+import { tripLegs } from './legs'
 import { describeWeather } from './weather'
 
 /**
@@ -37,7 +38,12 @@ export async function exportKml(tripId: string): Promise<File> {
     })
     .join('\n')
 
-  const route = stops.map((s) => `${s.lon},${s.lat},0`).join(' ')
+  // Il percorso segue le strade stimate, tratto per tratto (dritto dove non c'è).
+  const routes = new Map((await db.routes.where('tripId').equals(tripId).toArray()).map((r) => [r.id, r]))
+  const route = tripLegs(stops, routes)
+    .flatMap((l, i) => (i === 0 ? l.points : l.points.slice(1)))
+    .map(([lat, lon]) => `${lon},${lat},0`)
+    .join(' ')
   const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>

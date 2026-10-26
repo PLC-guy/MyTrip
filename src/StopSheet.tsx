@@ -7,6 +7,7 @@ import Sheet from './Sheet'
 import { mapsUrl, shareStop } from './share'
 import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
+import { routesPending } from './routing'
 
 interface Props {
   stop: Stop
@@ -187,6 +188,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
                 setAsk(undefined)
                 void geocodePending()
                 void weatherPending()
+                void routesPending()
                 if (id) onOpen(id)
               }}
             >
@@ -211,6 +213,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
                 await mergeStops(ask.other.id, stop.id)
                 setAsk(undefined)
                 void weatherPending()
+                void routesPending()
                 onOpen(ask.other.id)
               }}
             >

@@ -9,6 +9,7 @@ import ErrorBoundary from './ErrorBoundary'
 import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
 import { recolorTrips } from './db'
+import { routesPending } from './routing'
 import { reloadLoopDetected } from './reloadGuard'
 import { applyUpdate, startAutoUpdate } from './update'
 
@@ -61,6 +62,7 @@ export default function App() {
     void geocodePending()
     void weatherPending()
     void recolorTrips()
+    void routesPending()
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 

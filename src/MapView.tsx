@@ -20,6 +20,8 @@ export interface MapLine {
   points: [number, number][]
   /** Tratto in aereo: tratteggio lungo invece dei puntini. */
   flight?: boolean
+  /** Linea dritta perché il percorso vero non si conosce (treno, barca, non trovato): tratteggio più leggero. */
+  straight?: boolean
   /** Icona del mezzo, disegnata a metà del tratto. */
   icon?: string
 }
@@ -206,7 +208,21 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
       m.addSource('pins', { type: 'geojson', data: EMPTY })
       // Due livelli per il percorso: il tratteggio non può cambiare da tratto a tratto.
       const paint: maplibregl.LineLayerSpecification['paint'] = { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9 }
-      m.addLayer({ id: 'route', type: 'line', source: 'route', filter: ['!', ['get', 'flight']], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { ...paint, 'line-dasharray': [0.1, 2] } })
+      m.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        filter: ['all', ['!', ['get', 'flight']], ['!', ['get', 'straight']]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { ...paint, 'line-dasharray': [0.1, 2] },
+      })
+      m.addLayer({
+        id: 'route-straight',
+        type: 'line',
+        source: 'route',
+        filter: ['==', ['get', 'straight'], true],
+        paint: { ...paint, 'line-width': 2, 'line-opacity': 0.55, 'line-dasharray': [2, 2.5] },
+      })
       m.addLayer({ id: 'route-flight', type: 'line', source: 'route', filter: ['==', ['get', 'flight'], true], paint: { ...paint, 'line-width': 2, 'line-dasharray': [4, 3] } })
       m.addLayer({
         id: 'pin-dots',
@@ -272,11 +288,18 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
     for (const l of lines) {
       if (l.icon && !m.hasImage(legImageId(l.icon))) m.addImage(legImageId(l.icon), drawLegIcon(l.icon), { pixelRatio: RATIO })
     }
+    // L'icona va a metà del tratto: fra i due estremi se è dritto, sul punto
+    // centrale se segue un percorso.
     const legs: Feature[] = lines
-      .filter((l) => l.icon && l.points.length === 2)
+      .filter((l) => l.icon && l.points.length >= 2)
       .map((l) => {
-        const [[aLat, aLon], [bLat, bLon]] = l.points
-        return { type: 'Feature', properties: { icon: legImageId(l.icon!) }, geometry: { type: 'Point', coordinates: [(aLon + bLon) / 2, (aLat + bLat) / 2] } }
+        let lat: number
+        let lon: number
+        if (l.points.length === 2) {
+          const [[aLat, aLon], [bLat, bLon]] = l.points
+          ;[lat, lon] = [(aLat + bLat) / 2, (aLon + bLon) / 2]
+        } else [lat, lon] = l.points[Math.floor(l.points.length / 2)]
+        return { type: 'Feature', properties: { icon: legImageId(l.icon!) }, geometry: { type: 'Point', coordinates: [lon, lat] } }
       })
     ;(m.getSource('legs') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: legs })
   }, [lines, ready])
@@ -389,7 +412,7 @@ function toGeoJson(lines: MapLine[]): FeatureCollection {
       .filter((l) => l.points.length > 1)
       .map((l) => ({
         type: 'Feature',
-        properties: { color: l.color, flight: !!l.flight },
+        properties: { color: l.color, flight: !!l.flight, straight: !!l.straight },
         // GeoJSON vuole [longitudine, latitudine].
         geometry: { type: 'LineString', coordinates: l.points.map(([lat, lon]) => [lon, lat]) },
       })),

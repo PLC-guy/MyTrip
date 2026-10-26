@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, newId, TRIP_COLORS, type Photo, type Stop, type Trip, type TripKind } from './db'
-import { legLines } from './transport'
+import { legsToLines } from './legs'
+import { useLegs } from './useLegs'
 import KindPicker from './KindPicker'
 import { fmtRange, plural } from './format'
 import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
@@ -56,6 +57,8 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
    */
   const [selected, setSelected] = useState<string>()
   const preview = rows?.find((r) => r.trip.id === selected)
+  // Tratti con i percorsi stimati, solo per il viaggio in anteprima.
+  const previewLegs = useLegs(preview?.trip.id, preview?.stops)
 
   // Una miniatura per tappa, solo per il viaggio in anteprima.
   const covers = useLiveQuery(async () => {
@@ -71,7 +74,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         const cover = covers?.get(s.id)
         return { id: preview.trip.id + '|' + s.id, lat: s.lat, lon: s.lon, color: preview.trip.color, img: cover ? thumbUrl(cover) : undefined, star: s.star }
       })
-      return { pins, lines: legLines(preview.stops, preview.trip.color), fitKey: `anteprima:${preview.trip.id}:${preview.stops.length}` }
+      return { pins, lines: legsToLines(previewLegs, preview.trip.color), fitKey: `anteprima:${preview.trip.id}:${preview.stops.length}` }
     }
     const pins: MapPin[] = []
     const lines: MapLine[] = []
@@ -80,7 +83,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
       lines.push({ id: r.trip.id, color: r.trip.color, points: r.stops.map((s) => [s.lat, s.lon]) })
     }
     return { pins, lines, fitKey: `tutti:${pins.length}` }
-  }, [rows, preview, covers])
+  }, [rows, preview, covers, previewLegs])
 
   const select = (id: string) => {
     // Niente scorrimento: la mappa è agganciata in alto (.home-map) e resta in vista.

@@ -1,4 +1,4 @@
-import { db, type Photo, type Stop, type Trip } from './db'
+import { db, type Photo, type Route, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
 
 /**
@@ -23,6 +23,8 @@ interface ExportFile {
   trips: TripFile[]
   stops: Stop[]
   photos: PhotoFile[]
+  /** Percorsi stimati fra le tappe (dalla 0.6.0, facoltativi: i file più vecchi non li hanno). */
+  routes?: Route[]
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -52,11 +54,12 @@ async function build(kind: ExportFile['kind'], trips: Trip[]): Promise<ExportFil
   const ids = trips.map((t) => t.id)
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
+  const routes = await db.routes.where('tripId').anyOf(ids).toArray()
   const encoded: PhotoFile[] = []
   for (const p of photos) encoded.push({ ...p, thumb: await blobToDataUrl(p.thumb) })
   const tripFiles: TripFile[] = []
   for (const t of trips) tripFiles.push({ ...t, coverImage: t.coverImage ? await blobToDataUrl(t.coverImage) : undefined })
-  return { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, photos: encoded }
+  return { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, photos: encoded, routes }
 }
 
 /** Nome di file sicuro su ogni sistema. */
@@ -129,10 +132,11 @@ export async function importFile(file: File): Promise<ImportSummary> {
   // indirizzi in memoria puntano alle immagini di prima.
   forgetThumbs([...photos.map((p) => p.id), ...trips.flatMap((t) => (t.coverImageId ? [t.coverImageId] : []))])
 
-  await db.transaction('rw', db.trips, db.stops, db.photos, async () => {
+  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes], async () => {
     await db.trips.bulkPut(trips)
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)
+    if (Array.isArray(data.routes)) await db.routes.bulkPut(data.routes)
   })
   return { trips: data.trips.map((t) => t.name), photos: photos.length }
 }

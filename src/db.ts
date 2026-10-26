@@ -67,8 +67,10 @@ export interface Stop {
   weather?: Weather
   /** true quando il meteo è già stato chiesto (anche se non trovato). */
   weatherDone?: boolean
-  /** Mezzo con cui si è arrivati qui dalla tappa precedente (chiave di transport.ts). */
+  /** Mezzo con cui si è arrivati qui dalla tappa precedente (chiave di transport.ts). Se manca si deduce. */
   transport?: string
+  /** true = tratto disegnato in linea dritta anche se esiste un percorso stimato. */
+  straight?: boolean
   /** true quando il nome del luogo è già stato chiesto (anche se non trovato). */
   geocoded?: boolean
   /** Versione delle regole con cui il nome è stato chiesto (vedi geocode.ts). */
@@ -101,16 +103,49 @@ export interface Photo {
   name: string
 }
 
+/**
+ * Percorso stimato per arrivare a una tappa dalla precedente, con un certo tipo
+ * di percorso (auto, piedi…). Si calcola una volta e si conserva; uno per ogni
+ * tipo provato su quel tratto, così tornare a un mezzo già usato non richiede
+ * nulla al servizio esterno. Vedi `routing.ts`.
+ */
+export interface Route {
+  /** `${toStopId}|${profilo}` */
+  id: string
+  toStopId: string
+  tripId: string
+  profile: string
+  /** Estremi usati per il calcolo: se le tappe si spostano, il percorso è da rifare. */
+  fromLat: number
+  fromLon: number
+  toLat: number
+  toLon: number
+  /** ok = trovato; none = nessun percorso con quel mezzo; far = troppo lontano per il servizio. */
+  status: 'ok' | 'none' | 'far'
+  /** Punti [lat, lon], semplificati. */
+  coords?: [number, number][]
+  km?: number
+  minutes?: number
+  /** Il percorso usa un traghetto. */
+  ferry?: boolean
+  at: number
+}
+
 export const db = new Dexie('mytrip') as Dexie & {
   trips: EntityTable<Trip, 'id'>
   stops: EntityTable<Stop, 'id'>
   photos: EntityTable<Photo, 'id'>
+  routes: EntityTable<Route, 'id'>
 }
 
 db.version(1).stores({
   trips: 'id, createdAt',
   stops: 'id, tripId, start',
   photos: 'id, tripId, stopId, key, [tripId+time]',
+})
+// Versione 2 (0.6.0): percorsi stimati fra le tappe.
+db.version(2).stores({
+  routes: 'id, toStopId, tripId',
 })
 
 /** Colori dei viaggi, a rotazione: la palette del sito di Greta (tè, blu, laterite, zafferano…). */
@@ -137,9 +172,10 @@ export function newId(): string {
 export async function deleteTrip(tripId: string): Promise<void> {
   const trip = await db.trips.get(tripId)
   forgetThumbs([...(await db.photos.where('tripId').equals(tripId).primaryKeys()), ...(trip?.coverImageId ? [trip.coverImageId] : [])])
-  await db.transaction('rw', db.trips, db.stops, db.photos, async () => {
+  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes], async () => {
     await db.photos.where('tripId').equals(tripId).delete()
     await db.stops.where('tripId').equals(tripId).delete()
+    await db.routes.where('tripId').equals(tripId).delete()
     await db.trips.delete(tripId)
   })
 }

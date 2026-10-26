@@ -2,10 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip, stopTitle, type Photo, type Stop, type TripKind } from './db'
 import KindPicker from './KindPicker'
-import { dayOf, fmtDayLong, fmtRange, fmtTime, plural } from './format'
+import { dayOf, fmtDayLong, fmtDuration, fmtRange, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
 import { IconBack, IconMore, IconPhotos, IconPlay, IconStop } from './icons'
-import { distanceM, importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
+import { importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import StopSheet from './StopSheet'
@@ -15,7 +15,10 @@ import { setBusy } from './update'
 import { deliverFile, exportTrip } from './backup'
 import { exportKml } from './kml'
 import { fmtKm, tripStats } from './stats'
-import { legLines, TRANSPORTS, transportOf } from './transport'
+import { TRANSPORTS, transportOf } from './transport'
+import { legsToLines } from './legs'
+import { useLegs } from './useLegs'
+import { routesPending } from './routing'
 import { describeWeather, weatherPending } from './weather'
 import type { Route } from './App'
 
@@ -29,7 +32,7 @@ type Panel =
   | { kind: 'rename'; value: string; type: TripKind }
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
-  | { kind: 'transport'; stop: Stop; from: Stop }
+  | { kind: 'transport'; stopId: string }
 
 /** Quanto resta su ogni tappa l'itinerario animato. */
 const PLAY_MS = 2600
@@ -98,14 +101,18 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     [data?.stops, byStop, color],
   )
 
-  // Un tratto per ogni coppia di tappe, col mezzo scelto. Durante l'itinerario
-  // animato si disegnano solo i tratti già percorsi.
-  const lines = useMemo<MapLine[]>(() => {
-    const stops = data?.stops ?? []
-    return legLines(stops, color, play === null ? stops.length : play + 1)
-  }, [data?.stops, color, play])
+  // Un tratto per ogni coppia di tappe, col percorso stimato se c'è. Durante
+  // l'itinerario animato si disegnano solo i tratti già percorsi.
+  const legs = useLegs(id, data?.stops)
+  const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1), [legs, color, play])
+  const warnings = legs.filter((l) => l.warning)
 
-  const stats = useMemo(() => (data ? tripStats(data.stops, data.photos) : undefined), [data])
+  // Percorsi mancanti di questo viaggio, prima degli altri.
+  useEffect(() => {
+    void routesPending(id)
+  }, [id])
+
+  const stats = useMemo(() => (data ? tripStats(data.stops, data.photos, legs) : undefined), [data, legs])
 
   if (!data) return null
   if (!data.trip) {
@@ -138,6 +145,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       void navigator.storage?.persist?.()
       void geocodePending()
       void weatherPending()
+      void routesPending(id)
     } catch (e) {
       setPanel({ kind: 'none' })
       setError(`Import non riuscito: ${e instanceof Error ? e.message : String(e)}`)
@@ -155,6 +163,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       setError(`Export non riuscito: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
+
+  const openLeg = (stopId: string) => setPanel({ kind: 'transport', stopId })
 
   const openAt = (sid: string) => {
     setPlay(null)
@@ -209,6 +219,18 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <p className="meta" style={{ margin: '10px 2px 0' }}>
             {fmtRange(data.stops[0].first, data.stops.at(-1)!.first)} · {plural(data.stops.length, 'tappa', 'tappe')} · {plural(data.photos.length, 'foto', 'foto')}
           </p>
+          {warnings.length > 0 && (
+            <button
+              className="note-box warm warn-banner"
+              onClick={() => {
+                const leg = warnings[0]
+                document.getElementById(`leg-${leg.toStopId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                openLeg(leg.toStopId)
+              }}
+            >
+              ⚠️ {plural(warnings.length, 'tratto da verificare', 'tratti da verificare')}: il mezzo dedotto non torna. Tocca per vedere il primo.
+            </button>
+          )}
         </>
       )}
 
@@ -247,7 +269,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         <>
           <h2 className="section-title">Il viaggio in numeri</h2>
           <div className="stats">
-            <div><b>{fmtKm(stats.km)}</b><span>in linea d'aria</span></div>
+            <div><b>{fmtKm(stats.routeKm)}</b><span>percorsi (stima)</span></div>
             <div><b>{stats.days}</b><span>{stats.days === 1 ? 'giorno' : 'giorni'}</span></div>
             <div><b>{stats.stops}</b><span>{stats.stops === 1 ? 'tappa' : 'tappe'}</span></div>
             <div><b>{stats.photos}</b><span>foto</span></div>
@@ -262,7 +284,13 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             {stats.byTransport.length > 0 && (
               <div className="wide">
                 <b>{stats.byTransport.map((t) => `${t.icon} ${fmtKm(t.km)}`).join('  ')}</b>
-                <span>per mezzo (i tratti in cui l'hai indicato)</span>
+                <span>per mezzo · indicato da te</span>
+              </div>
+            )}
+            {stats.byInferred.length > 0 && (
+              <div className="wide">
+                <b>{stats.byInferred.map((t) => `${t.icon} ${fmtKm(t.km)}`).join('  ')}</b>
+                <span>per mezzo · dedotto dall'app</span>
               </div>
             )}
           </div>
@@ -284,15 +312,17 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           {d.stops.map((s) => {
             const photos = byStop.get(s.id) ?? []
             const idx = data.stops.indexOf(s)
-            const from = idx > 0 ? data.stops[idx - 1] : undefined
-            const t = transportOf(s.transport)
+            const leg = idx > 0 ? legs[idx - 1] : undefined
             const w = s.weather && describeWeather(s.weather.code)
             return (
               <Fragment key={s.id}>
-                {from && (
-                  <button className={`leg${t ? ' set' : ''}`} onClick={() => setPanel({ kind: 'transport', stop: s, from })}>
+                {leg && (
+                  // Mezzo scelto: pieno. Dedotto: tratteggiato, col «?». Da verificare: ⚠️.
+                  <button id={`leg-${s.id}`} className={`leg${leg.inferred ? '' : ' set'}${leg.warning ? ' warn' : ''}`} onClick={() => openLeg(s.id)}>
                     <span className="leg-label">
-                      {t ? `${t.icon} ${t.label}` : '+ mezzo'} · {fmtKm(distanceM(from.lat, from.lon, s.lat, s.lon) / 1000)}
+                      {leg.warning ? '⚠️ ' : ''}
+                      {leg.icon} {leg.inferred ? `${leg.label.toLowerCase()}?` : leg.label} · {fmtKm(leg.km)}
+                      {leg.minutes != null && leg.minutes >= 1 && !leg.straight ? ` · ${fmtDuration(leg.minutes)}` : ''}
                     </span>
                   </button>
                 )}
@@ -341,42 +371,66 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         />
       )}
 
-      {panel.kind === 'transport' && (
-        <Sheet onClose={() => setPanel({ kind: 'none' })}>
-          <h2>Come ci sei arrivato?</h2>
-          <p className="small">
-            Da «{stopTitle(panel.from)}» a «{stopTitle(panel.stop)}» · {fmtKm(distanceM(panel.from.lat, panel.from.lon, panel.stop.lat, panel.stop.lon) / 1000)} in linea d'aria
-          </p>
-          <div className="transport-grid">
-            {TRANSPORTS.map((t) => (
-              <button
-                key={t.key}
-                className={panel.stop.transport === t.key ? 'on' : ''}
-                onClick={() => {
-                  void db.stops.update(panel.stop.id, { transport: t.key })
-                  setPanel({ kind: 'none' })
-                }}
-              >
-                <span>{t.icon}</span>
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {panel.stop.transport && (
+      {panel.kind === 'transport' && (() => {
+        // Dati sempre freschi dalla lista: il foglio resta aperto mentre arrivano i percorsi.
+        const to = data.stops.find((s) => s.id === panel.stopId)
+        const at = to ? data.stops.indexOf(to) : -1
+        const leg = legs[at - 1]
+        if (!to || !leg) return null
+        const from = data.stops[at - 1]
+        const setStop = (patch: Partial<Stop>) => {
+          void db.stops.update(to.id, patch).then(() => routesPending(id))
+        }
+        return (
+          <Sheet onClose={() => setPanel({ kind: 'none' })}>
+            <h2>Come ci sei arrivato?</h2>
+            <p className="small">
+              Da «{stopTitle(from)}» a «{stopTitle(to)}» · {fmtKm(leg.straightKm)} in linea d'aria
+            </p>
+            <div className="note-box" style={{ marginTop: 10 }}>
+              {leg.inferred ? 'Mezzo dedotto dalla distanza: ' : 'Mezzo indicato: '}
+              <b>
+                {leg.icon} {leg.label}
+              </b>
+              {leg.mode === 'plane'
+                ? ` · rotta in linea d'aria, ${fmtKm(leg.km)}`
+                : leg.pending
+                ? ' · percorso in calcolo (serve la connessione)'
+                : leg.straight
+                  ? ' · linea dritta'
+                  : ` · percorso stimato ${fmtKm(leg.km)}${leg.minutes != null ? `, ${fmtDuration(leg.minutes)}` : ''}`}
+              {leg.warning && <p style={{ margin: '8px 0 0' }}>⚠️ {leg.warning}</p>}
+            </div>
+            <div className="transport-grid">
+              {TRANSPORTS.map((t) => (
+                <button key={t.key} className={to.transport === t.key ? 'on' : ''} onClick={() => setStop({ transport: t.key })}>
+                  <span>{t.icon}</span>
+                  {t.label}
+                </button>
+              ))}
+            </div>
             <div className="stack">
-              <button
-                className="btn ghost"
-                onClick={() => {
-                  void db.stops.update(panel.stop.id, { transport: undefined })
-                  setPanel({ kind: 'none' })
-                }}
-              >
-                Togli il mezzo
+              {to.transport && (
+                <button className="btn ghost" onClick={() => setStop({ transport: undefined })}>
+                  Lascia decidere all'app
+                </button>
+              )}
+              {leg.mode !== 'plane' && leg.mode !== 'train' && (
+                <label className="check">
+                  <input type="checkbox" checked={!!to.straight} onChange={(e) => setStop({ straight: e.target.checked || undefined })} />
+                  Disegna in linea dritta (se il percorso stimato non è quello che hai fatto)
+                </label>
+              )}
+              <button className="btn" onClick={() => setPanel({ kind: 'none' })}>
+                Fatto
               </button>
             </div>
-          )}
-        </Sheet>
-      )}
+            <p className="small">
+              Il percorso è una stima: la strada più veloce con quel mezzo, non necessariamente quella che hai fatto. Treno e barche senza una tratta mappata restano in linea dritta.
+            </p>
+          </Sheet>
+        )
+      })()}
 
       {panel.kind === 'diary' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })}>

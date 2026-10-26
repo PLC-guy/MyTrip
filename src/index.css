@@ -149,6 +149,11 @@ img { display: block; }
 .leg { display: block; border: 0; background: none; padding: 0 0 10px; margin-left: -4px; }
 .leg-label { display: inline-block; padding: 4px 12px; border-radius: 999px; border: 1.5px dashed var(--blue); color: var(--blue); background: var(--bg); font-size: 0.82rem; font-weight: 700; }
 .leg.set .leg-label { border-style: solid; background: var(--blue); color: var(--bg); }
+/* Mezzo dedotto che non torna (isola, troppo veloce per l'auto…) */
+.leg.warn .leg-label { border: 1.5px solid var(--lat); background: #f1dcc4; color: var(--lat); }
+.warn-banner { display: block; width: 100%; text-align: left; border: 0; margin: 12px 0 0; color: var(--ink); font-weight: 600; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem; color: var(--muted); }
+.check input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); flex: none; }
 .transport-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .transport-grid button { display: grid; justify-items: center; gap: 4px; padding: 12px 4px; border: 0; border-radius: var(--radius); background: var(--card); font-size: 0.88rem; font-weight: 600; }
 .transport-grid button span { font-size: 1.6rem; }

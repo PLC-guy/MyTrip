@@ -4,6 +4,7 @@ import { db } from './db'
 import { deliverFile, exportBackup, importFile } from './backup'
 import { fmtBytes, plural } from './format'
 import { geocodePending } from './geocode'
+import { routesPending } from './routing'
 import { IconBack } from './icons'
 import { applyUpdate, buildLabel, versionLabel } from './update'
 import type { Route } from './App'
@@ -65,6 +66,7 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
               void run(async () => {
                 const r = await importFile(file)
                 void geocodePending()
+                void routesPending()
                 return `Importato: ${r.trips.join(', ')} (${plural(r.photos, 'foto', 'foto')})`
               })
             }}
