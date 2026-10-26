@@ -1,7 +1,4 @@
-# Materiale di lavoro che resta solo sul PC (come in MyBsns)
-CLAUDE.md
-dev/
-design/
-graphify-out/
+# Il materiale di lavoro vive fuori dal repository (../prove, ../backup).
+# Qui si escludono solo i file generati.
 node_modules/
 dist/
