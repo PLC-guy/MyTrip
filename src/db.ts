@@ -27,6 +27,22 @@ export interface Trip {
   coverImage?: Blob
   /** Cambia a ogni nuova immagine di copertina: serve a non mostrare quella vecchia. */
   coverImageId?: string
+  /** Diario: un testo per giorno, chiave "2026-09-26". */
+  diary?: Record<string, string>
+  /** Tipo di viaggio scelto da chi lo crea; se manca vale «piacere». ⚠️ Valori da non rinominare. */
+  kind?: TripKind
+}
+
+export type TripKind = 'piacere' | 'lavoro'
+export const TRIP_KINDS: { key: TripKind; label: string; icon: string }[] = [
+  { key: 'piacere', label: 'Piacere', icon: '🌴' },
+  { key: 'lavoro', label: 'Lavoro', icon: '💼' },
+]
+
+/** Meteo all'ora della prima foto della tappa (codici WMO di Open-Meteo). */
+export interface Weather {
+  temp: number
+  code: number
 }
 
 /** Una tappa: foto vicine nello spazio e nel tempo. */
@@ -43,9 +59,20 @@ export interface Stop {
   first: string
   /** Nome del luogo da OpenStreetMap, es. «Bologna». */
   place?: string
+  /** Nome scelto a mano: ha la precedenza e il nome automatico non lo tocca mai. */
+  name?: string
   country?: string
+  /** Codice ISO del paese, «IT», «TH»: serve alla mappa dei paesi visitati. */
+  countryCode?: string
+  weather?: Weather
+  /** true quando il meteo è già stato chiesto (anche se non trovato). */
+  weatherDone?: boolean
+  /** Mezzo con cui si è arrivati qui dalla tappa precedente (chiave di transport.ts). */
+  transport?: string
   /** true quando il nome del luogo è già stato chiesto (anche se non trovato). */
   geocoded?: boolean
+  /** Versione delle regole con cui il nome è stato chiesto (vedi geocode.ts). */
+  geoV?: number
   note?: string
   star?: boolean
 }
@@ -64,6 +91,8 @@ export interface Photo {
   time: number
   lat: number
   lon: number
+  /** Altitudine in metri, se la foto la dichiara (le foto importate prima della 0.4.0 non ce l'hanno). */
+  alt?: number
   /** Miniatura JPEG: l'originale resta nella galleria del telefono. */
   thumb: Blob
   width: number
@@ -115,6 +144,58 @@ export async function deletePhoto(photoId: string): Promise<void> {
       return
     }
     await db.stops.update(photo.stopId, stopSummary(rest))
+  })
+}
+
+/** Nome da mostrare: quello scelto a mano, poi quello automatico. */
+export function stopTitle(s: Stop): string {
+  return s.name ?? s.place ?? (s.geocoded ? `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}` : 'Cerco il nome del luogo…')
+}
+
+/**
+ * Unisce la tappa `fromId` in `intoId`: foto, note e stellina passano alla
+ * seconda, la prima sparisce. Il nome scelto a mano di `intoId` resta.
+ */
+export async function mergeStops(intoId: string, fromId: string): Promise<void> {
+  await db.transaction('rw', db.stops, db.photos, async () => {
+    const into = await db.stops.get(intoId)
+    const from = await db.stops.get(fromId)
+    if (!into || !from) return
+    await db.photos.where('stopId').equals(fromId).modify({ stopId: intoId })
+    const photos = await db.photos.where('stopId').equals(intoId).toArray()
+    const note = [into.note, from.note].filter(Boolean).join('\n') || undefined
+    const summary = stopSummary(photos)
+    // Se la tappa ora comincia prima, l'arrivo è quello dell'altra tappa (mezzo
+    // compreso) e il meteo va richiesto per la nuova ora.
+    const startsEarlier = summary.first !== into.first
+    await db.stops.update(intoId, {
+      ...summary,
+      note,
+      star: into.star || from.star || undefined,
+      name: into.name ?? from.name,
+      ...(startsEarlier ? { transport: from.transport, weather: undefined, weatherDone: undefined } : {}),
+    })
+    await db.stops.delete(fromId)
+  })
+}
+
+/**
+ * Divide una tappa: la foto indicata e quelle scattate dopo formano una tappa
+ * nuova, con nome e meteo da chiedere di nuovo. Restituisce l'id della nuova.
+ */
+export async function splitStop(stopId: string, fromPhotoId: string): Promise<string | undefined> {
+  return db.transaction('rw', db.stops, db.photos, async () => {
+    const stop = await db.stops.get(stopId)
+    const photos = (await db.photos.where('stopId').equals(stopId).toArray()).sort((a, b) => a.time - b.time)
+    const at = photos.findIndex((p) => p.id === fromPhotoId)
+    if (!stop || at <= 0) return undefined
+    const before = photos.slice(0, at)
+    const after = photos.slice(at)
+    const id = newId()
+    await db.stops.add({ id, tripId: stop.tripId, ...stopSummary(after) })
+    await db.photos.where('id').anyOf(after.map((p) => p.id)).modify({ stopId: id })
+    await db.stops.update(stopId, stopSummary(before))
+    return id
   })
 }
 

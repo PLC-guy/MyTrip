@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, TRIP_COLORS, type Stop, type Trip } from './db'
+import { db, newId, TRIP_COLORS, type Stop, type Trip, type TripKind } from './db'
+import KindPicker from './KindPicker'
 import { fmtRange, plural } from './format'
-import { IconGear, IconPhotos, IconPlus } from './icons'
+import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
@@ -22,6 +23,7 @@ const inSafariTab = /iPhone|iPad/.test(navigator.userAgent) && !(navigator as Na
 export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const [kind, setKind] = useState<TripKind>('piacere')
 
   const rows = useLiveQuery(async (): Promise<TripRow[]> => {
     const trips = await db.trips.toArray()
@@ -56,10 +58,11 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
     const clean = name.trim()
     if (!clean) return
     const count = await db.trips.count()
-    const trip: Trip = { id: newId(), name: clean, createdAt: Date.now(), color: TRIP_COLORS[count % TRIP_COLORS.length] }
+    const trip: Trip = { id: newId(), name: clean, createdAt: Date.now(), color: TRIP_COLORS[count % TRIP_COLORS.length], kind }
     await db.trips.add(trip)
     setCreating(false)
     setName('')
+    setKind('piacere')
     go({ name: 'trip', id: trip.id })
   }
 
@@ -73,6 +76,20 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
           <IconGear />
         </button>
       </div>
+
+      {rows.length > 0 && (
+        <div className="shortcuts">
+          <button onClick={() => go({ name: 'search' })}>
+            <IconSearch /> Cerca
+          </button>
+          <button onClick={() => go({ name: 'stars' })}>
+            <IconStar /> Speciali
+          </button>
+          <button onClick={() => go({ name: 'countries' })}>
+            <IconGlobe /> Paesi
+          </button>
+        </div>
+      )}
 
       {inSafariTab && (
         <div className="note-box warm">
@@ -105,6 +122,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
               <h3>
                 <span className="dot" style={{ background: r.trip.color }} />
                 {r.trip.name}
+                {r.trip.kind === 'lavoro' && <span className="kind-badge" title="Viaggio di lavoro">💼</span>}
               </h3>
               <div className="meta">
                 {r.stops.length ? fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first) : 'Ancora nessuna foto'}
@@ -136,6 +154,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
             }}
           >
             <input className="field" autoFocus placeholder="Es. Giappone 2026" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+            <KindPicker value={kind} onChange={setKind} />
             <button className="btn" type="submit" disabled={!name.trim()}>
               Crea
             </button>

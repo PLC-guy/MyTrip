@@ -29,9 +29,17 @@ const BASE = '/MyTrip/'
 
 export default defineConfig({
   base: BASE,
-  // React, Leaflet, Dexie ed exifr insieme superano di poco i 500 KB: per una
-  // PWA che resta in cache sul telefono non vale la pena spezzarli.
-  build: { chunkSizeWarningLimit: 700 },
+  build: {
+    // La libreria della mappa (MapLibre, ~1 MB) in un file a parte: cambia di
+    // rado, quindi a ogni aggiornamento dell'app il telefono riscarica solo il
+    // codice dell'app e non anche la mappa.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        manualChunks: (id: string) => (id.includes('node_modules/maplibre-gl') ? 'maplibre' : undefined),
+      },
+    },
+  },
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     __COMMIT__: JSON.stringify(commitRef()),
@@ -68,16 +76,34 @@ export default defineConfig({
         navigateFallback: `${BASE}index.html`,
         runtimeCaching: [
           {
-            // Le mappe già viste restano disponibili offline. Le richieste sono
-            // CORS (crossOrigin sul tileLayer): una risposta opaca peserebbe
-            // diversi MB di quota ciascuna.
-            // ⚠️ Le regole di OpenStreetMap vietano di scaricare zone in blocco:
-            // qui si tengono solo le mappe già viste, con un tetto.
-            urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
+            // Confini dei paesi (500 KB): non nella precache, che li farebbe
+            // scaricare a ogni installazione; si tengono dopo la prima apertura
+            // della schermata Paesi.
+            urlPattern: ({ url }) => url.pathname.endsWith('/countries.json'),
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'paesi' },
+          },
+          {
+            // Stile e indice delle tile di OpenFreeMap: prima la rete. L'indice
+            // punta a una versione datata delle tile che cambia a ogni
+            // aggiornamento della mappa; tenerlo per sempre in cache finirebbe
+            // per chiedere tile che il server non ha più.
+            urlPattern: ({ url }) => url.host === 'tiles.openfreemap.org' && (url.pathname.startsWith('/styles/') || url.pathname === '/planet'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'mappa-stile',
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
+            // Tile, caratteri e simboli già visti restano disponibili offline,
+            // con un tetto: niente scaricamento di zone in blocco.
+            urlPattern: ({ url }) => url.host === 'tiles.openfreemap.org',
             handler: 'CacheFirst',
             options: {
               cacheName: 'mappe',
-              expiration: { maxEntries: 2000, maxAgeSeconds: 30 * 24 * 3600 },
+              expiration: { maxEntries: 4000, maxAgeSeconds: 60 * 24 * 3600 },
               cacheableResponse: { statuses: [200] },
             },
           },

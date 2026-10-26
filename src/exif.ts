@@ -7,6 +7,7 @@ export interface PhotoMeta {
   time: number
   lat: number
   lon: number
+  alt?: number
 }
 
 export type MetaResult = { ok: true; meta: PhotoMeta } | { ok: false; reason: 'senza data' | 'senza posizione' | 'illeggibile' }
@@ -49,7 +50,11 @@ export async function readMeta(file: Blob): Promise<MetaResult> {
   const offset = typeof offsetRaw === 'string' && /^[+-]\d{2}:\d{2}$/.test(offsetRaw) ? offsetRaw : undefined
   const time = offset ? Date.parse(taken + offset) : Date.parse(taken + 'Z')
 
-  return { ok: true, meta: { taken, offset, time, lat, lon } }
+  // GPSAltitudeRef = 1 vuol dire «sotto il livello del mare».
+  const altRaw = raw.GPSAltitude
+  const alt = typeof altRaw === 'number' && Number.isFinite(altRaw) ? Math.round(Number(raw.GPSAltitudeRef) === 1 ? -altRaw : altRaw) : undefined
+
+  return { ok: true, meta: { taken, offset, time, lat, lon, alt } }
 }
 
 /** Impronta di uno scatto: stessa data e stessa posizione = stessa foto. */

@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, deleteTrip, type Photo, type Stop } from './db'
+import { db, deleteTrip, stopTitle, type Photo, type Stop, type TripKind } from './db'
+import KindPicker from './KindPicker'
 import { dayOf, fmtDayLong, fmtRange, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
-import { IconBack, IconMore, IconPhotos } from './icons'
-import { importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
-import MapView, { type MapPin } from './MapView'
+import { IconBack, IconMore, IconPhotos, IconPlay, IconStop } from './icons'
+import { distanceM, importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
+import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import StopSheet from './StopSheet'
 import CoverSheet from './CoverSheet'
 import { thumbUrl } from './thumbUrl'
 import { setBusy } from './update'
 import { deliverFile, exportTrip } from './backup'
+import { exportKml } from './kml'
+import { fmtKm, tripStats } from './stats'
+import { TRANSPORTS, transportOf } from './transport'
+import { describeWeather, weatherPending } from './weather'
 import type { Route } from './App'
 
 type Panel =
@@ -21,15 +26,22 @@ type Panel =
   | { kind: 'import'; progress: ImportProgress; report?: ImportReport }
   | { kind: 'menu' }
   | { kind: 'cover' }
-  | { kind: 'rename'; value: string }
+  | { kind: 'rename'; value: string; type: TripKind }
   | { kind: 'delete' }
+  | { kind: 'diary'; day: string; value: string }
+  | { kind: 'transport'; stop: Stop; from: Stop }
 
-export default function TripScreen({ id, go }: { id: string; go: (r: Route) => void }) {
+/** Quanto resta su ogni tappa l'itinerario animato. */
+const PLAY_MS = 2600
+
+export default function TripScreen({ id, initialStop, go }: { id: string; initialStop?: string; go: (r: Route) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [panel, setPanel] = useState<Panel>({ kind: 'none' })
-  const [openStop, setOpenStop] = useState<string>()
-  const [focus, setFocus] = useState<string>()
+  const [openStop, setOpenStop] = useState<string | undefined>(initialStop)
+  const [focus, setFocus] = useState<string | undefined>(initialStop)
   const [error, setError] = useState<string>()
+  /** Indice della tappa mostrata dall'itinerario animato; null = fermo. */
+  const [play, setPlay] = useState<number | null>(null)
 
   const data = useLiveQuery(async () => {
     const trip = await db.trips.get(id)
@@ -48,6 +60,13 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
     el.addEventListener('cancel', onCancel)
     return () => el.removeEventListener('cancel', onCancel)
   }, [ready])
+
+  const stopCount = data?.stops.length ?? 0
+  useEffect(() => {
+    if (play === null) return
+    const t = setTimeout(() => setPlay((p) => (p === null || p + 1 >= stopCount ? null : p + 1)), PLAY_MS)
+    return () => clearTimeout(t)
+  }, [play, stopCount])
 
   const byStop = useMemo(() => {
     const map = new Map<string, Photo[]>()
@@ -69,15 +88,30 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
     return out
   }, [data?.stops])
 
+  const color = data?.trip?.color ?? '#888'
   const pins = useMemo<MapPin[]>(
     () =>
       (data?.stops ?? []).map((s) => {
         const cover = byStop.get(s.id)?.[0]
-        return { id: s.id, lat: s.lat, lon: s.lon, color: data?.trip?.color ?? '#888', img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star }
+        return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star }
       }),
-    [data, byStop],
+    [data?.stops, byStop, color],
   )
-  const lines = useMemo(() => (data?.trip ? [{ id: 'route', color: data.trip.color, points: data.stops.map((s) => [s.lat, s.lon] as [number, number]) }] : []), [data])
+
+  // Un tratto per ogni coppia di tappe, col mezzo scelto. Durante l'itinerario
+  // animato si disegnano solo i tratti già percorsi.
+  const lines = useMemo<MapLine[]>(() => {
+    const stops = data?.stops ?? []
+    const upTo = play === null ? stops.length : play + 1
+    const out: MapLine[] = []
+    for (let i = 1; i < upTo; i++) {
+      const t = transportOf(stops[i].transport)
+      out.push({ id: stops[i].id, color, points: [[stops[i - 1].lat, stops[i - 1].lon], [stops[i].lat, stops[i].lon]], flight: t?.key === 'plane', icon: t?.icon })
+    }
+    return out
+  }, [data?.stops, color, play])
+
+  const stats = useMemo(() => (data ? tripStats(data.stops, data.photos) : undefined), [data])
 
   if (!data) return null
   if (!data.trip) {
@@ -91,6 +125,7 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
     )
   }
   const trip = data.trip
+  const dayNumber = (day: string) => days.findIndex((d) => d.day === day) + 1
 
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? [])
@@ -108,6 +143,7 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
       setPanel({ kind: 'import', progress: { done: files.length, total: files.length }, report })
       void navigator.storage?.persist?.()
       void geocodePending()
+      void weatherPending()
     } catch (e) {
       setPanel({ kind: 'none' })
       setError(`Import non riuscito: ${e instanceof Error ? e.message : String(e)}`)
@@ -117,17 +153,25 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
     }
   }
 
-  async function onExport() {
+  async function deliver(make: () => Promise<File>) {
     setPanel({ kind: 'none' })
     try {
-      await deliverFile(await exportTrip(id))
+      await deliverFile(await make())
     } catch (e) {
       setError(`Export non riuscito: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
-  const stop = data.stops.find((s) => s.id === openStop)
+  const openAt = (sid: string) => {
+    setPlay(null)
+    setFocus(sid)
+    setOpenStop(sid)
+  }
+
+  const stopIndex = data.stops.findIndex((s) => s.id === openStop)
+  const stop = stopIndex >= 0 ? data.stops[stopIndex] : undefined
   const importing = panel.kind === 'import' && !panel.report
+  const playing = play !== null ? data.stops[play] : undefined
 
   return (
     <div className="page">
@@ -143,17 +187,31 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
 
       {data.stops.length > 0 && (
         <>
-          <MapView
-            tall
-            pins={pins}
-            lines={lines}
-            fitKey={`${id}|${data.stops.length}`}
-            focusId={focus}
-            onPin={(sid) => {
-              setFocus(sid)
-              setOpenStop(sid)
-            }}
-          />
+          <MapView tall pins={pins} lines={lines} fitKey={`${id}|${data.stops.length}`} focusId={playing?.id ?? focus} onPin={openAt}>
+            {data.stops.length > 1 && (
+              <button
+                className="icon-btn map-play"
+                aria-label={playing ? "Ferma l'itinerario" : "Ripercorri l'itinerario"}
+                onClick={() => {
+                  setOpenStop(undefined)
+                  setPlay(playing ? null : 0)
+                }}
+              >
+                {playing ? <IconStop /> : <IconPlay />}
+              </button>
+            )}
+            {playing && (
+              <div className="map-caption" onClick={() => openAt(playing.id)}>
+                {byStop.get(playing.id)?.[0] && <img src={thumbUrl(byStop.get(playing.id)![0])} alt="" />}
+                <div style={{ minWidth: 0 }}>
+                  <span className="meta">
+                    {transportOf(playing.transport)?.icon} Giorno {dayNumber(dayOf(playing.first))} · {fmtTime(playing.first)} · {play! + 1}/{data.stops.length}
+                  </span>
+                  <b>{stopTitle(playing)}</b>
+                </div>
+              </div>
+            )}
+          </MapView>
           <p className="meta" style={{ margin: '10px 2px 0' }}>
             {fmtRange(data.stops[0].first, data.stops.at(-1)!.first)} · {plural(data.stops.length, 'tappa', 'tappe')} · {plural(data.photos.length, 'foto', 'foto')}
           </p>
@@ -191,46 +249,154 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
         </label>
       </div>
 
+      {stats && stats.stops > 0 && (
+        <>
+          <h2 className="section-title">Il viaggio in numeri</h2>
+          <div className="stats">
+            <div><b>{fmtKm(stats.km)}</b><span>in linea d'aria</span></div>
+            <div><b>{stats.days}</b><span>{stats.days === 1 ? 'giorno' : 'giorni'}</span></div>
+            <div><b>{stats.stops}</b><span>{stats.stops === 1 ? 'tappa' : 'tappe'}</span></div>
+            <div><b>{stats.photos}</b><span>foto</span></div>
+            <div><b>{stats.places}</b><span>{stats.places === 1 ? 'località' : 'località'}</span></div>
+            <div><b>{stats.countries.length}</b><span>{stats.countries.length === 1 ? 'paese' : 'paesi'}</span></div>
+            {stats.highest && (
+              <div className="wide"><b>{stats.highest.alt} m</b><span>punto più alto · {stats.highest.where}</span></div>
+            )}
+            {stats.busiest && stats.days > 1 && (
+              <div className="wide"><b>{stats.busiest.photos} foto</b><span>il giorno più intenso · {fmtDayLong(stats.busiest.day)}</span></div>
+            )}
+            {stats.byTransport.length > 0 && (
+              <div className="wide">
+                <b>{stats.byTransport.map((t) => `${t.icon} ${fmtKm(t.km)}`).join('  ')}</b>
+                <span>per mezzo (i tratti in cui l'hai indicato)</span>
+              </div>
+            )}
+          </div>
+          {stats.countries.length > 0 && <p className="small">{stats.countries.join(' · ')}</p>}
+        </>
+      )}
+
       {days.map((d, i) => (
         <section key={d.day}>
           <div className="day">
             <b>Giorno {i + 1}</b>
             <span>{fmtDayLong(d.stops[0].first)}</span>
           </div>
+          <button className="diary" onClick={() => setPanel({ kind: 'diary', day: d.day, value: trip.diary?.[d.day] ?? '' })}>
+            {trip.diary?.[d.day] ? <span className="diary-text">{trip.diary[d.day]}</span> : <span className="diary-add">✎ Scrivi il diario del giorno</span>}
+          </button>
           {d.stops.map((s) => {
             const photos = byStop.get(s.id) ?? []
+            const idx = data.stops.indexOf(s)
+            const from = idx > 0 ? data.stops[idx - 1] : undefined
+            const t = transportOf(s.transport)
+            const w = s.weather && describeWeather(s.weather.code)
             return (
-              <button
-                key={s.id}
-                className="stop"
-                onClick={() => {
-                  setFocus(s.id)
-                  setOpenStop(s.id)
-                }}
-              >
-                <span className="time">{fmtTime(s.first)}</span>
-                <span className="body">
-                  <span className="place" style={{ display: 'block' }}>
-                    {s.star && <span className="star">★ </span>}
-                    {s.place ?? (s.geocoded ? `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}` : 'Cerco il nome del luogo…')}
+              <Fragment key={s.id}>
+                {from && (
+                  <button className={`leg${t ? ' set' : ''}`} onClick={() => setPanel({ kind: 'transport', stop: s, from })}>
+                    <span className="leg-line" />
+                    <span className="leg-label">
+                      {t ? `${t.icon} ${t.label}` : '+ mezzo'} · {fmtKm(distanceM(from.lat, from.lon, s.lat, s.lon) / 1000)}
+                    </span>
+                  </button>
+                )}
+                <button className="stop" onClick={() => openAt(s.id)}>
+                  <span className="time">{fmtTime(s.first)}</span>
+                  <span className="body">
+                    <span className="place" style={{ display: 'block' }}>
+                      {s.star && <span className="star">★ </span>}
+                      {stopTitle(s)}
+                    </span>
+                    <span className="meta">
+                      {plural(photos.length, 'foto', 'foto')}
+                      {w && s.weather ? ` · ${w.icon} ${s.weather.temp}°` : ''}
+                      {s.note ? ' · ' + s.note : ''}
+                    </span>
+                    <span className="strip">
+                      {photos.slice(0, 5).map((p) => (
+                        <img key={p.id} src={thumbUrl(p)} alt="" loading="lazy" />
+                      ))}
+                    </span>
                   </span>
-                  <span className="meta">
-                    {plural(photos.length, 'foto', 'foto')}
-                    {s.note ? ' · ' + s.note : ''}
-                  </span>
-                  <span className="strip">
-                    {photos.slice(0, 5).map((p) => (
-                      <img key={p.id} src={thumbUrl(p)} alt="" loading="lazy" />
-                    ))}
-                  </span>
-                </span>
-              </button>
+                </button>
+              </Fragment>
             )
           })}
         </section>
       ))}
 
-      {stop && <StopSheet stop={stop} photos={byStop.get(stop.id) ?? []} color={trip.color} onClose={() => setOpenStop(undefined)} />}
+      {stop && (
+        <StopSheet
+          key={stop.id}
+          stop={stop}
+          photos={byStop.get(stop.id) ?? []}
+          color={trip.color}
+          prev={data.stops[stopIndex - 1]}
+          next={data.stops[stopIndex + 1]}
+          onClose={() => setOpenStop(undefined)}
+          onOpen={openAt}
+        />
+      )}
+
+      {panel.kind === 'transport' && (
+        <Sheet onClose={() => setPanel({ kind: 'none' })}>
+          <h2>Come ci sei arrivato?</h2>
+          <p className="small">
+            Da «{stopTitle(panel.from)}» a «{stopTitle(panel.stop)}» · {fmtKm(distanceM(panel.from.lat, panel.from.lon, panel.stop.lat, panel.stop.lon) / 1000)} in linea d'aria
+          </p>
+          <div className="transport-grid">
+            {TRANSPORTS.map((t) => (
+              <button
+                key={t.key}
+                className={panel.stop.transport === t.key ? 'on' : ''}
+                onClick={() => {
+                  void db.stops.update(panel.stop.id, { transport: t.key })
+                  setPanel({ kind: 'none' })
+                }}
+              >
+                <span>{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {panel.stop.transport && (
+            <div className="stack">
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  void db.stops.update(panel.stop.id, { transport: undefined })
+                  setPanel({ kind: 'none' })
+                }}
+              >
+                Togli il mezzo
+              </button>
+            </div>
+          )}
+        </Sheet>
+      )}
+
+      {panel.kind === 'diary' && (
+        <Sheet onClose={() => setPanel({ kind: 'none' })}>
+          <h2>Giorno {dayNumber(panel.day)}</h2>
+          <p className="small">{fmtDayLong(panel.day + 'T12:00:00')}</p>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const diary = { ...(trip.diary ?? {}) }
+              const clean = panel.value.trim()
+              if (clean) diary[panel.day] = clean
+              else delete diary[panel.day]
+              void db.trips.update(id, { diary })
+              setPanel({ kind: 'none' })
+            }}
+          >
+            <textarea className="field diary-field" autoFocus placeholder="Com'è andata oggi?" value={panel.value} onChange={(e) => setPanel({ ...panel, value: e.target.value })} />
+            <button className="btn" type="submit">Salva</button>
+          </form>
+        </Sheet>
+      )}
 
       {panel.kind === 'picking' && (
         <Sheet locked onClose={() => {}}>
@@ -299,11 +465,15 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
         <Sheet onClose={() => setPanel({ kind: 'none' })}>
           <h2>{trip.name}</h2>
           <div className="stack">
-            <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name })}>Rinomina</button>
+            <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
             <button className="btn ghost" onClick={() => setPanel({ kind: 'cover' })}>Scegli la copertina</button>
-            <button className="btn ghost" onClick={() => void onExport()} disabled={data.photos.length === 0}>Esporta il viaggio</button>
+            <button className="btn ghost" onClick={() => void deliver(() => exportTrip(id))} disabled={data.photos.length === 0}>Esporta il viaggio</button>
+            <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps (KML)</button>
             <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Elimina il viaggio</button>
           </div>
+          <p className="small">
+            Il file KML si importa in Google My Maps (Crea una nuova mappa → Importa) o si apre in Google Earth: contiene tappe, date, note e percorso, ma non le foto.
+          </p>
         </Sheet>
       )}
 
@@ -311,18 +481,19 @@ export default function TripScreen({ id, go }: { id: string; go: (r: Route) => v
 
       {panel.kind === 'rename' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })}>
-          <h2>Rinomina</h2>
+          <h2>Nome e tipo</h2>
           <form
             className="stack"
             onSubmit={(e) => {
               e.preventDefault()
               const value = panel.value.trim()
               if (!value) return
-              void db.trips.update(id, { name: value })
+              void db.trips.update(id, { name: value, kind: panel.type })
               setPanel({ kind: 'none' })
             }}
           >
-            <input className="field" autoFocus value={panel.value} maxLength={80} onChange={(e) => setPanel({ kind: 'rename', value: e.target.value })} />
+            <input className="field" autoFocus value={panel.value} maxLength={80} onChange={(e) => setPanel({ ...panel, value: e.target.value })} />
+            <KindPicker value={panel.type} onChange={(type) => setPanel({ ...panel, type })} />
             <button className="btn" type="submit" disabled={!panel.value.trim()}>Salva</button>
           </form>
         </Sheet>
