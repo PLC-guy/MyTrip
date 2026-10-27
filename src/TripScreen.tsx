@@ -105,6 +105,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   // l'itinerario animato si disegnano solo i tratti già percorsi.
   const legs = useLegs(id, data?.stops)
   const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1), [legs, color, play])
+  const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color), [legs, color])
   const warnings = legs.filter((l) => l.warning)
 
   // Percorsi mancanti di questo viaggio, prima degli altri.
@@ -191,7 +192,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
 
       {data.stops.length > 0 && (
         <>
-          <MapView tall pins={pins} lines={lines} fitKey={`${id}|${data.stops.length}`} focusId={playing?.id ?? focus} onPin={openAt}>
+          <MapView tall pins={pins} lines={lines} fitLines={allLines} fitKey={`${id}|${data.stops.length}`} focusId={playing?.id ?? focus} onPin={openAt}>
             {data.stops.length > 1 && (
               <button
                 className="icon-btn map-play"

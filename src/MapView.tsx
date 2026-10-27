@@ -41,6 +41,8 @@ interface Props {
   world?: boolean
   /** Punti da inquadrare senza disegnarli (pagina Paesi). */
   fitPoints?: { lat: number; lon: number }[]
+  /** Percorsi da inquadrare, se diversi da quelli disegnati (itinerario animato: sempre tutti, così la vista non salta a ogni tappa). */
+  fitLines?: MapLine[]
   /** Paesi da colorare (codici ISO), per la mappa dei paesi visitati. */
   countries?: { codes: string[]; color: string }
   /** Contenuto sovrapposto alla mappa (es. la didascalia dell'itinerario animato). */
@@ -176,7 +178,7 @@ function drawLegIcon(icon: string): ImageData {
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, world, fitMaxZoom = 15, fitPoints, countries, children }: Props) {
+export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, world, fitMaxZoom = 15, fitPoints, fitLines = lines, countries, children }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [ready, setReady] = useState(false)
@@ -341,6 +343,15 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
     }
   }, [pins, focusId, ready])
 
+  // Si inquadrano le tappe E i percorsi: una strada stimata può allargarsi
+  // oltre le tappe (una costa, una montagna da aggirare) e con le sole tappe
+  // restava tagliata, soprattutto nella mappa piccola della Home (27/10/2026).
+  // `linesBox` cambia solo se cambia l'ingombro dei percorsi (che arrivano dopo,
+  // dal database o dal servizio), non a ogni ridisegno.
+  const lineBounds = new maplibregl.LngLatBounds()
+  if (!world) for (const l of fitLines) for (const [lat, lon] of l.points) lineBounds.extend([lon, lat])
+  const linesBox = lineBounds.isEmpty() ? '' : lineBounds.toArray().flat().map((v) => v.toFixed(3)).join(',')
+
   // Si riadatta solo quando cambia l'insieme dei punti, non a ogni ridisegno:
   // altrimenti ogni nota o stellina farebbe saltare la vista.
   useEffect(() => {
@@ -349,11 +360,12 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
     if (!m || points.length === 0) return
     const bounds = new maplibregl.LngLatBounds()
     for (const p of points) bounds.extend([p.lon, p.lat])
+    if (!lineBounds.isEmpty()) bounds.extend(lineBounds)
     // Più spazio sopra (miniature con la punta, etichette) e sotto (crediti, didascalia).
     const padding = world ? 6 : { top: 80, bottom: 50, left: 40, right: 40 }
     m.fitBounds(bounds, { padding, maxZoom: fitMaxZoom, duration: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey])
+  }, [fitKey, linesBox])
 
   useEffect(() => {
     const m = map.current
