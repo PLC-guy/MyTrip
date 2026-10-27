@@ -43,3 +43,10 @@ export const IconGlobe = () => (
 export const IconPlay = () => <Svg><path d="M7 4l13 8-13 8z" /></Svg>
 export const IconStop = () => <Svg><rect x="6" y="6" width="12" height="12" rx="2" /></Svg>
 export const IconPin =() => <Svg><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" /><circle cx="12" cy="9" r="2.5" /></Svg>
+/** «Aggiungi alla schermata Home»: il quadrato col più che iOS mette accanto alla voce. */
+export const IconAddToHome = () => (
+  <Svg>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="4.25" />
+    <path d="M12 8.25v7.5M8.25 12h7.5" />
+  </Svg>
+)

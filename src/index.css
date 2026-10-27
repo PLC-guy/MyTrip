@@ -99,16 +99,12 @@ img { display: block; }
 }
 .home-map .map { height: 36dvh; min-height: 220px; }
 
-/* «Nuovo viaggio» sempre a portata di pollice, in basso a destra. La Home
-   lascia spazio sotto l'ultima scheda perché il pulsante non la copra. */
-.fab {
-  position: fixed; z-index: 20; right: max(16px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 16px);
-  display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 22px;
-  border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 700;
-  box-shadow: 0 6px 18px rgb(28 43 36 / 30%);
-}
-.fab svg { width: 20px; height: 20px; }
-.page.has-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+/* Titolo dell'elenco con «Nuovo viaggio» sulla stessa riga. */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 28px 0 12px; }
+.section-head .section-title { margin: 0; white-space: nowrap; }
+.section-head .btn { width: auto; flex: none; }
+.section-head .btn svg { width: 18px; height: 18px; }
+.empty-state .btn { margin-top: 8px; }
 
 /* --- Scorciatoie della Home --- */
 .shortcuts { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
@@ -268,3 +264,46 @@ textarea.field { min-height: 84px; resize: vertical; }
 /* Mappa del mondo (Paesi): proporzioni del mondo tra 72°N e 50°S, così entra
    tutto senza fasce vuote sopra e sotto. */
 .map.world { height: auto; min-height: 0; aspect-ratio: 1.45; }
+
+/* ---- Guida all'installazione (InstallGate.tsx): al posto dell'app, nel browser del telefono. */
+.install {
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(env(safe-area-inset-top) + 28px) 16px calc(env(safe-area-inset-bottom) + 96px);
+}
+.install-card { width: 100%; max-width: 26rem; display: flex; flex-direction: column; gap: 14px; }
+.install-card h1 { font-family: var(--display); font-weight: 400; font-size: 1.7rem; line-height: 1.15; margin: 0; color: var(--accent); }
+.install-icon { width: 64px; height: 64px; border-radius: 15px; animation: install-pop 0.6s ease-out both; }
+.install-lead { margin: 0; color: var(--muted); }
+.install-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+/* Il passo acceso: scheda verde tè, numero pieno. Gli altri restano tenui. */
+.install-steps li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: var(--radius);
+  border: 1.5px dashed var(--line); background: transparent;
+  transition: background 0.35s, border-color 0.35s, transform 0.35s;
+}
+.install-steps li.on { background: var(--card); border-color: var(--accent); border-style: solid; transform: scale(1.02); }
+.install-steps .num {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.85rem;
+  color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent);
+  transition: background 0.35s, color 0.35s;
+}
+.install-steps li.on .num { background: var(--accent); color: #fff; }
+.install-steps svg { width: 1.05em; height: 1.05em; vertical-align: -0.2em; }
+/* ⚠️ La freccia è ancorata allo SCHERMO: indica la barra del browser, fuori dalla
+   pagina. Su iPhone sopra i tre puntini di Safari (centro a ~56px dal bordo
+   destro, misura presa in MyBsns su uno schermo da 375pt). */
+.install-arrow { position: fixed; width: 24px; height: 48px; color: var(--saff); pointer-events: none; }
+.install-arrow.down { right: 44px; bottom: calc(env(safe-area-inset-bottom) + 12px); animation: install-down 1.4s ease-in-out infinite; }
+.install-arrow.up { right: 12px; top: 8px; animation: install-up 1.4s ease-in-out infinite; }
+@keyframes install-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
+@keyframes install-up { 0%, 100% { transform: rotate(180deg) translateY(0); } 50% { transform: rotate(180deg) translateY(8px); } }
+@keyframes install-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .install-arrow, .install-icon { animation: none; }
+  .install-arrow.up { transform: rotate(180deg); }
+  .install-steps li { transition: none; }
+}

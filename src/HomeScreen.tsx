@@ -105,7 +105,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   if (!rows) return null
 
   return (
-    <div className="page has-fab">
+    <div className="page">
       <div className="bar">
         <h1 className="brand">MyTrip</h1>
         <button className="icon-btn" onClick={() => go({ name: 'settings' })} aria-label="Impostazioni">
@@ -170,9 +170,20 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         <div className="empty-state">
           <h2>Il primo viaggio</h2>
           <p>Crea un viaggio e aggiungi le foto dalla galleria: data e luogo di ogni scatto diventano tappe sulla mappa.</p>
+          <button className="btn" onClick={() => setCreating(true)}>
+            <IconPlus /> Nuovo viaggio
+          </button>
         </div>
       ) : (
-        <h2 className="section-title">I miei viaggi</h2>
+        // «Nuovo viaggio» accanto al titolo e non fisso sullo schermo: copriva
+        // «Visualizza tappe» dell'anteprima. Un viaggio nuovo si crea appena
+        // aperta l'app, non dopo aver scorso l'elenco (scelta dell'utente, 27/10/2026).
+        <div className="section-head">
+          <h2 className="section-title">I miei viaggi</h2>
+          <button className="btn small-btn" onClick={() => setCreating(true)}>
+            <IconPlus /> Nuovo viaggio
+          </button>
+        </div>
       )}
 
       <div className="trips">
@@ -227,11 +238,6 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         ))}
       </div>
 
-      {/* Pulsante fisso in basso: con tanti viaggi, in fondo all'elenco
-          costringerebbe a scorrere tutto per trovarlo. */}
-      <button className="fab" onClick={() => setCreating(true)}>
-        <IconPlus /> Nuovo viaggio
-      </button>
 
       {creating && (
         <Sheet onClose={() => setCreating(false)}>

@@ -6,6 +6,8 @@ import StarsScreen from './StarsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
+import InstallGate from './InstallGate'
+import { readEnvironment } from './install'
 import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
 import { recolorTrips } from './db'
@@ -23,6 +25,15 @@ export type Route =
 
 // Una volta per caricamento della pagina, non a ogni disegno.
 const LOOP_BROKEN = reloadLoopDetected()
+
+/**
+ * Sul telefono, aperta dal browser e non dalla Home: solo la guida
+ * all'installazione (il perché è in `install.ts`). Sul computer l'app si usa
+ * anche nel browser. In sviluppo la guida si vede con `?guida=ios` (o
+ * `android`, `app`); `null` = niente guida.
+ */
+const ENV = readEnvironment()
+const GUIDE = import.meta.env.DEV ? new URLSearchParams(location.search).get('guida') : !ENV.installed && ENV.platform !== 'desktop' ? '' : null
 
 /**
  * La schermata vive nell'indirizzo (#/viaggio/…): dopo un aggiornamento
@@ -79,6 +90,8 @@ export default function App() {
   const go = (r: Route) => {
     location.hash = writeRoute(r)
   }
+
+  if (GUIDE !== null) return <InstallGate force={GUIDE} />
 
   return (
     <>
