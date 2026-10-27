@@ -7,12 +7,14 @@ import { geocodePending } from './geocode'
 import { routesPending } from './routing'
 import { IconBack } from './icons'
 import { applyUpdate, buildLabel, versionLabel } from './update'
+import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
 import type { Route } from './App'
 
 export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState<string>()
   const [working, setWorking] = useState(false)
+  const countryColor = useCountryColor()
   const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
 
   const counts = useLiveQuery(async () => ({ trips: await db.trips.count(), stops: await db.stops.count(), photos: await db.photos.count() }))
@@ -45,6 +47,22 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
           <IconBack />
         </button>
         <h1>Impostazioni</h1>
+      </div>
+
+      <h2 className="section-title">Aspetto</h2>
+      <div className="list">
+        <div style={{ display: 'block' }}>
+          <span className="label soft">Colore dei paesi visitati</span>
+          <div className="swatches" style={{ marginTop: 10 }}>
+            {COUNTRY_COLORS.map((c) => (
+              <button key={c} className={`swatch${countryColor.toLowerCase() === c.toLowerCase() ? ' on' : ''}`} style={{ background: c }} aria-label={`Colore ${c}`} onClick={() => setCountryColor(c)} />
+            ))}
+            {/* Colore libero: il selettore di sistema dell'iPhone. */}
+            <label className={`swatch swatch-custom${COUNTRY_COLORS.some((c) => c.toLowerCase() === countryColor.toLowerCase()) ? '' : ' on'}`} aria-label="Scegli un altro colore">
+              <input type="color" value={countryColor} onChange={(e) => setCountryColor(e.target.value)} />
+            </label>
+          </div>
+        </div>
       </div>
 
       <h2 className="section-title">Backup</h2>

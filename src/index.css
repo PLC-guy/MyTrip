@@ -99,6 +99,17 @@ img { display: block; }
 }
 .home-map .map { height: 36dvh; min-height: 220px; }
 
+/* «Nuovo viaggio» sempre a portata di pollice, in basso a destra. La Home
+   lascia spazio sotto l'ultima scheda perché il pulsante non la copra. */
+.fab {
+  position: fixed; z-index: 20; right: max(16px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 16px);
+  display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 22px;
+  border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 700;
+  box-shadow: 0 6px 18px rgb(28 43 36 / 30%);
+}
+.fab svg { width: 20px; height: 20px; }
+.page.has-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+
 /* --- Scorciatoie della Home --- */
 .shortcuts { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
 .shortcuts::-webkit-scrollbar { display: none; }
@@ -230,6 +241,18 @@ textarea.field { min-height: 84px; resize: vertical; }
 .cover-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--line); }
 .cover-grid img.on { outline: 3px solid var(--accent); outline-offset: 2px; }
 
+/* --- Scelta a pillole (filtri della pagina Paesi) --- */
+.segmented { display: flex; gap: 6px; margin-bottom: 12px; }
+.segmented button { flex: 1; min-height: 40px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; }
+.segmented button.on { background: var(--ink); color: var(--bg); }
+
+/* --- Colori (Impostazioni › Aspetto) --- */
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.swatch { width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 15%); }
+.swatch.on { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ink); }
+.swatch-custom { position: relative; overflow: hidden; display: grid; place-items: center; background: conic-gradient(#e3a02b, #a3432a, #6b4f8c, #1f4e8c, #2f8c86, #2f6b4f, #e3a02b); }
+.swatch-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
 /* --- Tipo di viaggio --- */
 .kind-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kind-picker button { min-height: 46px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-weight: 700; }
@@ -241,3 +264,7 @@ textarea.field { min-height: 84px; resize: vertical; }
 .list .k { color: var(--muted); }
 .small { font-size: 0.86rem; color: var(--muted); }
 .hidden-input { display: none; }
+
+/* Mappa del mondo (Paesi): proporzioni del mondo tra 72°N e 50°S, così entra
+   tutto senza fasce vuote sopra e sotto. */
+.map.world { height: auto; min-height: 0; aspect-ratio: 1.45; }

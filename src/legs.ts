@@ -17,8 +17,16 @@ import { fmtDuration } from './format'
  * col mezzo DEDOTTO: se l'hai scelto tu, l'app si fida.
  */
 export const WALK_KM = 2
-/** Oltre questo rapporto fra percorso e linea d'aria il percorso si considera un giro assurdo. */
-const ABSURD_RATIO = 3
+/**
+ * Giro assurdo: percorso oltre ABSURD_RATIO volte la linea d'aria E più lungo di
+ * ABSURD_EXTRA_KM. Serve per le foto scattate in mare o vicino a un'altra isola,
+ * dove il servizio inventa giri di decine di km (rapporti 10–20×).
+ * ⚠️ Non meno: con 3× e nessun minimo (0.6.0) risultavano «improbabili» strade
+ * di montagna e del deserto del tutto normali, piene di tornanti o costrette a
+ * girare attorno ai rilievi (Tenerife 3,0× e 3,5×, Las Vegas 3,3×; 27/10/2026).
+ */
+const ABSURD_RATIO = 5
+const ABSURD_EXTRA_KM = 25
 /** Margine sul tempo: in auto servono X minuti, tra le foto ne sono passati meno di X − margine. */
 const TIME_MARGIN_MIN = 20
 /** Ore di guida plausibili in 24 ore. */
@@ -116,7 +124,7 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
     }
   }
 
-  const absurd = straightKm > 1 && (r.km ?? 0) > straightKm * ABSURD_RATIO
+  const absurd = (r.km ?? 0) > straightKm * ABSURD_RATIO && (r.km ?? 0) - straightKm > ABSURD_EXTRA_KM
   // Barca scelta a mano ma nessun traghetto sul percorso: la rotta vera non la conosciamo.
   if (mode === 'boat' && !r.ferry) return base
   if (absurd) return { ...base, warning: inferred ? `Il percorso ${what} stimato è un giro improbabile: indica il mezzo` : undefined }
@@ -155,7 +163,8 @@ export function legsToLines(legs: LegInfo[], color: string, upTo = legs.length +
     points: l.points,
     flight: l.mode === 'plane',
     straight: l.straight && l.mode !== 'plane',
-    icon: l.inferred && l.icon !== '⛴️' ? undefined : l.icon,
+    // Nessuna icona del mezzo sulla mappa, nemmeno se scelto a mano (richiesta
+    // dell'utente, 27/10/2026): il mezzo si legge nella cronologia.
   }))
 }
 

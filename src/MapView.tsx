@@ -36,6 +36,8 @@ interface Props {
   tall?: boolean
   /** Zoom massimo quando la mappa si adatta ai punti (15 = vie; 4 = paesi). */
   fitMaxZoom?: number
+  /** Mappa del mondo (pagina Paesi): proporzioni larghe e margini minimi, così il mondo intero riempie il riquadro. */
+  world?: boolean
   /** Punti da inquadrare senza disegnarli (pagina Paesi). */
   fitPoints?: { lat: number; lon: number }[]
   /** Paesi da colorare (codici ISO), per la mappa dei paesi visitati. */
@@ -170,7 +172,7 @@ function drawLegIcon(icon: string): ImageData {
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fitMaxZoom = 15, fitPoints, countries, children }: Props) {
+export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, world, fitMaxZoom = 15, fitPoints, countries, children }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [ready, setReady] = useState(false)
@@ -344,7 +346,8 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
     const bounds = new maplibregl.LngLatBounds()
     for (const p of points) bounds.extend([p.lon, p.lat])
     // Più spazio sopra (miniature con la punta, etichette) e sotto (crediti, didascalia).
-    m.fitBounds(bounds, { padding: { top: 80, bottom: 50, left: 40, right: 40 }, maxZoom: fitMaxZoom, duration: 0 })
+    const padding = world ? 6 : { top: 80, bottom: 50, left: 40, right: 40 }
+    m.fitBounds(bounds, { padding, maxZoom: fitMaxZoom, duration: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey])
 
@@ -358,7 +361,7 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, fit
 
   return (
     <div className="map-wrap">
-      <div ref={el} className={`map${tall ? ' tall' : ''}`} />
+      <div ref={el} className={`map${tall ? ' tall' : ''}${world ? ' world' : ''}`} />
       {children}
     </div>
   )

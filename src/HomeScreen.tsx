@@ -105,7 +105,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   if (!rows) return null
 
   return (
-    <div className="page">
+    <div className="page has-fab">
       <div className="bar">
         <h1 className="brand">MyTrip</h1>
         <button className="icon-btn" onClick={() => go({ name: 'settings' })} aria-label="Impostazioni">
@@ -227,11 +227,11 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         ))}
       </div>
 
-      <div style={{ marginTop: 16 }}>
-        <button className="btn" onClick={() => setCreating(true)}>
-          <IconPlus /> Nuovo viaggio
-        </button>
-      </div>
+      {/* Pulsante fisso in basso: con tanti viaggi, in fondo all'elenco
+          costringerebbe a scorrere tutto per trovarlo. */}
+      <button className="fab" onClick={() => setCreating(true)}>
+        <IconPlus /> Nuovo viaggio
+      </button>
 
       {creating && (
         <Sheet onClose={() => setCreating(false)}>
