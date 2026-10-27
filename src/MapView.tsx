@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { Feature, FeatureCollection } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { cssColor } from './theme'
 
 export interface MapPin {
   id: string
@@ -67,7 +68,8 @@ function localize(map: maplibregl.Map) {
 }
 
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] }
-const INK = '#1C2B24'
+// Colori del tema attivo, letti a ogni disegno: la mappa si ricrea cambiando schermata.
+const ink = () => cssColor('--ink', '#1C2B24')
 
 /**
  * PUNTATORI
@@ -127,7 +129,7 @@ async function drawPin(p: MapPin): Promise<ImageData> {
   ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 3, 3, PIN - 6, PIN - 6)
   ctx.restore()
   if (p.count && p.count > 1) {
-    ctx.fillStyle = INK
+    ctx.fillStyle = ink()
     roundRect(ctx, PIN - 19, PIN - 16, 16, 13, 6.5)
     ctx.fill()
     ctx.fillStyle = '#fff'
@@ -137,7 +139,7 @@ async function drawPin(p: MapPin): Promise<ImageData> {
     ctx.fillText(p.count > 99 ? '99' : String(p.count), PIN - 11, PIN - 9.5)
   }
   if (p.star) {
-    ctx.fillStyle = '#E3A02B'
+    ctx.fillStyle = cssColor('--saff', '#E3A02B')
     ctx.beginPath()
     ctx.arc(PIN - 7, 7, 7, 0, Math.PI * 2)
     ctx.fill()
@@ -158,13 +160,15 @@ function drawLegIcon(icon: string): ImageData {
   canvas.width = canvas.height = size * s
   const ctx = canvas.getContext('2d')!
   ctx.scale(s, s)
-  ctx.fillStyle = '#F5F0E6'
-  ctx.strokeStyle = 'rgba(28,43,36,.25)'
+  ctx.fillStyle = cssColor('--bg', '#F5F0E6')
+  ctx.strokeStyle = ink()
   ctx.lineWidth = 1
   ctx.beginPath()
   ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
   ctx.fill()
+  ctx.globalAlpha = 0.25
   ctx.stroke()
+  ctx.globalAlpha = 1
   ctx.font = '14px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'

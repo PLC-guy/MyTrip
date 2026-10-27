@@ -2,7 +2,12 @@
    inchiostro verde scurissimo, verde tè per i titoli, schede piatte verde chiaro
    con etichette in maiuscoletto e separatori tratteggiati, cronologia lungo una
    linea tratteggiata blu. Titoli in Young Serif, testo in Atkinson Hyperlegible.
-   ⚠️ Solo tema chiaro, come il sito: niente variante scura. */
+   ⚠️ Solo temi chiari, come il sito: niente variante scura (anche la mappa è chiara).
+
+   TEMI (Impostazioni › Aspetto, `theme.ts`): l'attributo data-theme sulla radice
+   cambia le variabili qui sotto. ⚠️ Ogni colore dell'app passa da una variabile:
+   un colore scritto a mano resterebbe uguale in tutti i temi. I colori dei
+   viaggi e dei paesi invece NON cambiano col tema: li sceglie l'utente. */
 :root {
   color-scheme: light;
   --bg: #f5f0e6; /* calce */
@@ -17,9 +22,52 @@
   --lat: #a3432a; /* laterite */
   --map-bg: #e4e8dc;
   --danger: #a3432a;
+  --warm: #f1dcc4; /* fondo degli avvisi */
+  --on-accent: #ffffff;
   --radius: 6px;
   --display: 'Young Serif', Georgia, 'Times New Roman', serif;
+  --display-weight: 400;
   --body: 'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', system-ui, -apple-system, sans-serif;
+}
+
+/* Sabbia e terracotta: caldo, mediterraneo. Fondo sabbia, accento terracotta,
+   cronologia blu mare; gli avvisi in rosso per non confondersi con l'accento. */
+:root[data-theme='terracotta'] {
+  --bg: #f6ede1;
+  --card: #ecdac5;
+  --paper: #fdf8f1;
+  --ink: #33221a;
+  --muted: #6a5548;
+  --line: #dfcdb8;
+  --accent: #b0532c;
+  --blue: #2a6987;
+  --saff: #d9962b;
+  --lat: #a02f2b;
+  --map-bg: #efe3d2;
+  --danger: #a02f2b;
+  --warm: #f6d6cc;
+}
+
+/* Nebbia e indaco: il tema moderno. Grigi freddi, schede bianche, accento
+   indaco, cronologia petrolio; titoli in Atkinson grassetto invece del serif,
+   angoli più tondi. */
+:root[data-theme='moderno'] {
+  --bg: #f3f4f7;
+  --card: #e4e7ef;
+  --paper: #ffffff;
+  --ink: #141824;
+  --muted: #586070;
+  --line: #d5d9e2;
+  --accent: #4338ca;
+  --blue: #0e7490;
+  --saff: #f59e0b;
+  --lat: #c62828;
+  --map-bg: #e7e9ee;
+  --danger: #c62828;
+  --warm: #fde3e1;
+  --radius: 12px;
+  --display: var(--body);
+  --display-weight: 700;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -41,11 +89,11 @@ img { display: block; }
 /* --- Etichette in maiuscoletto, come «GRETA · ALE» e «DATE» nel sito --- */
 .label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
 .label.soft { font-weight: 500; color: var(--muted); }
-.rule { border: 0; border-top: 1.5px dashed rgb(28 43 36 / 22%); margin: 12px 0; }
+.rule { border: 0; border-top: 1.5px dashed color-mix(in srgb, var(--ink) 22%, transparent); margin: 12px 0; }
 
 /* --- Intestazione --- */
 .bar { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 12px; }
-.bar h1 { flex: 1; margin: 0; font: 400 1.75rem/1.1 var(--display); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar h1 { flex: 1; margin: 0; font: var(--display-weight) 1.75rem/1.1 var(--display); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar h1.brand { font-size: 2.5rem; line-height: 1.05; white-space: normal; }
 .subtitle { margin: -4px 0 16px; color: var(--muted); }
 .icon-btn {
@@ -80,7 +128,7 @@ img { display: block; }
 .map-play { position: absolute; top: 10px; right: 10px; background: var(--bg); }
 .map-caption { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: var(--radius); background: var(--bg); }
 .map-caption img { width: 48px; height: 48px; border-radius: 4px; object-fit: cover; flex: none; }
-.map-caption b { display: block; font: 400 1.05rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-caption b { display: block; font: var(--display-weight) 1.05rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Fascia del colore di fondo dietro orologio e batteria: il contenuto che
    scorre lì sotto non si vede, invece di apparire sfocato. Su computer è alta 0. */
@@ -113,7 +161,7 @@ img { display: block; }
 .shortcuts svg { width: 17px; height: 17px; }
 
 /* --- Schede (viaggi, tappe, numeri) --- */
-.section-title { margin: 28px 0 12px; font: 400 1.45rem/1.2 var(--display); color: var(--ink); }
+.section-title { margin: 28px 0 12px; font: var(--display-weight) 1.45rem/1.2 var(--display); color: var(--ink); }
 .section-title .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 3px; }
 .trips { display: grid; gap: 12px; }
 .trip-item { border-radius: var(--radius); background: var(--card); }
@@ -121,7 +169,7 @@ img { display: block; }
 .trip-card { display: block; width: 100%; padding: 14px 16px 12px; text-align: left; border: 0; border-radius: var(--radius); background: none; }
 .trip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .trip-main { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
-.trip-main h3 { flex: 1; margin: 0; font: 400 1.6rem/1.15 var(--display); }
+.trip-main h3 { flex: 1; margin: 0; font: var(--display-weight) 1.6rem/1.15 var(--display); }
 .trip-card .cover { width: 58px; height: 58px; flex: none; border-radius: 4px; object-fit: cover; background: var(--line); }
 .facts { display: flex; gap: 22px; }
 .facts > div { display: grid; gap: 2px; }
@@ -136,17 +184,17 @@ img { display: block; }
 .timeline { margin-top: 8px; }
 .timeline > section { position: relative; padding: 14px 14px 4px 44px; margin-bottom: 14px; border-radius: var(--radius); background: var(--card); }
 .timeline > section::before { content: ''; position: absolute; left: 23px; top: 22px; bottom: 22px; border-left: 3px dotted var(--blue); }
-.day { position: relative; margin: 0 0 10px; padding-bottom: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; border-bottom: 1.5px dashed rgb(28 43 36 / 22%); }
+.day { position: relative; margin: 0 0 10px; padding-bottom: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 22%, transparent); }
 .day::before { content: ''; position: absolute; left: -29px; top: 6px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
-.day b { font: 400 1.35rem/1.2 var(--display); }
+.day b { font: var(--display-weight) 1.35rem/1.2 var(--display); }
 .day span { color: var(--muted); font-size: 0.92rem; }
 .stop { position: relative; display: block; width: 100%; padding: 12px 14px; margin-bottom: 10px; text-align: left; border: 0; border-radius: var(--radius); background: var(--card); }
 .timeline .stop { background: var(--paper); }
 .timeline .stop::before { content: ''; position: absolute; left: -25px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
 .stop-head { display: flex; justify-content: space-between; gap: 10px; }
 .stop-title { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; min-width: 0; }
-.stop-title .n { font: 400 0.95rem var(--display); color: var(--muted); }
-.stop-title b { font: 400 1.3rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; }
+.stop-title .n { font: var(--display-weight) 0.95rem var(--display); color: var(--muted); }
+.stop-title b { font: var(--display-weight) 1.3rem/1.2 var(--display); overflow: hidden; text-overflow: ellipsis; }
 .stop .note { display: block; margin-top: 6px; color: var(--muted); font-size: 0.92rem; }
 .stop .strip { display: flex; gap: 5px; margin-top: 10px; }
 .stop .strip img { width: 46px; height: 46px; border-radius: 4px; object-fit: cover; background: var(--line); }
@@ -154,14 +202,14 @@ img { display: block; }
 .stop.compact { display: flex; gap: 12px; align-items: center; }
 .stop .thumb { width: 56px; height: 56px; border-radius: 4px; object-fit: cover; flex: none; background: var(--line); }
 .stop .body { flex: 1; min-width: 0; }
-.stop .place { font: 400 1.15rem/1.25 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop .place { font: var(--display-weight) 1.15rem/1.25 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Tratto fra due tappe, con il mezzo: un'etichetta sulla linea tratteggiata */
 .leg { display: block; border: 0; background: none; padding: 0 0 10px; margin-left: -4px; }
 .leg-label { display: inline-block; padding: 4px 12px; border-radius: 999px; border: 1.5px dashed var(--blue); color: var(--blue); background: var(--bg); font-size: 0.82rem; font-weight: 700; }
 .leg.set .leg-label { border-style: solid; background: var(--blue); color: var(--bg); }
 /* Mezzo dedotto che non torna (isola, troppo veloce per l'auto…) */
-.leg.warn .leg-label { border: 1.5px solid var(--lat); background: #f1dcc4; color: var(--lat); }
+.leg.warn .leg-label { border: 1.5px solid var(--lat); background: var(--warm); color: var(--lat); }
 .warn-banner { display: block; width: 100%; text-align: left; border: 0; margin: 12px 0 0; color: var(--ink); font-weight: 600; }
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem; color: var(--muted); }
 .check input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); flex: none; }
@@ -172,7 +220,7 @@ img { display: block; }
 
 /* Diario del giorno */
 .diary { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 0 0 10px; }
-.diary-text { display: block; white-space: pre-wrap; font: 400 1rem/1.5 var(--display); color: var(--ink); }
+.diary-text { display: block; white-space: pre-wrap; font: var(--display-weight) 1rem/1.5 var(--display); color: var(--ink); }
 .diary-add { font-size: 0.88rem; color: var(--muted); text-decoration: underline dotted; }
 .diary-field { min-height: 40dvh; }
 
@@ -180,19 +228,19 @@ img { display: block; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .stats > div { padding: 12px; border-radius: var(--radius); background: var(--card); min-width: 0; }
 .stats > div.wide { grid-column: 1 / -1; }
-.stats b { display: block; font: 400 1.3rem/1.2 var(--display); }
+.stats b { display: block; font: var(--display-weight) 1.3rem/1.2 var(--display); }
 .stats span { display: block; margin-top: 2px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 
 .empty-state { text-align: center; padding: 36px 16px; color: var(--muted); }
-.empty-state h2 { color: var(--accent); font: 400 1.6rem/1.2 var(--display); margin: 0 0 8px; }
+.empty-state h2 { color: var(--accent); font: var(--display-weight) 1.6rem/1.2 var(--display); margin: 0 0 8px; }
 .empty-state p { margin: 0 0 20px; }
 
 .note-box { padding: 12px 14px; border-radius: var(--radius); background: var(--card); margin-bottom: 12px; font-size: 0.92rem; }
-.note-box.warm { background: #f1dcc4; }
+.note-box.warm { background: var(--warm); }
 .banner { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 28px); z-index: 2000; max-width: 728px; margin: 0 auto; }
 
 /* --- Foglio dal basso --- */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 1500; background: rgb(28 43 36 / 45%); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.15s ease-out; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 1500; background: color-mix(in srgb, var(--ink) 45%, transparent); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.15s ease-out; }
 .sheet {
   /* 92% del contenitore, non dello schermo: il contenitore si accorcia
      quando sull'iPhone si apre la tastiera (vedi Sheet.tsx). */
@@ -202,7 +250,7 @@ img { display: block; }
   animation: rise 0.2s ease-out;
 }
 .sheet .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 14px; }
-.sheet h2 { margin: 0 0 4px; font: 400 1.5rem/1.2 var(--display); color: var(--accent); }
+.sheet h2 { margin: 0 0 4px; font: var(--display-weight) 1.5rem/1.2 var(--display); color: var(--accent); }
 .sheet .stack { display: grid; gap: 10px; margin-top: 16px; }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
@@ -259,7 +307,7 @@ textarea.field { min-height: 84px; resize: vertical; }
 .kind-picker button.on { background: var(--ink); color: var(--bg); }
 
 .list { border-radius: var(--radius); background: var(--card); overflow: hidden; }
-.list > * { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 14px; border-bottom: 1.5px dashed rgb(28 43 36 / 15%); }
+.list > * { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 14px; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); }
 .list > *:last-child { border-bottom: 0; }
 .list .k { color: var(--muted); }
 .small { font-size: 0.86rem; color: var(--muted); }
@@ -276,7 +324,7 @@ textarea.field { min-height: 84px; resize: vertical; }
   padding: calc(env(safe-area-inset-top) + 28px) 16px calc(env(safe-area-inset-bottom) + 96px);
 }
 .install-card { width: 100%; max-width: 26rem; display: flex; flex-direction: column; gap: 14px; }
-.install-card h1 { font-family: var(--display); font-weight: 400; font-size: 1.7rem; line-height: 1.15; margin: 0; color: var(--accent); }
+.install-card h1 { font-family: var(--display); font-weight: var(--display-weight); font-size: 1.7rem; line-height: 1.15; margin: 0; color: var(--accent); }
 .install-icon { width: 64px; height: 64px; border-radius: 15px; animation: install-pop 0.6s ease-out both; }
 .install-lead { margin: 0; color: var(--muted); }
 .install-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -295,7 +343,7 @@ textarea.field { min-height: 84px; resize: vertical; }
   color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent);
   transition: background 0.35s, color 0.35s;
 }
-.install-steps li.on .num { background: var(--accent); color: #fff; }
+.install-steps li.on .num { background: var(--accent); color: var(--on-accent); }
 .install-steps svg { width: 1.05em; height: 1.05em; vertical-align: -0.2em; }
 /* ⚠️ La freccia è ancorata allo SCHERMO: indica la barra del browser, fuori dalla
    pagina. Su iPhone sopra l'icona ≡ di Safari (iOS 26), a sinistra dell'indirizzo:
@@ -313,3 +361,16 @@ textarea.field { min-height: 84px; resize: vertical; }
   .install-arrow.up { transform: rotate(180deg); }
   .install-steps li { transition: none; }
 }
+
+/* ---- Scelta del tema (Impostazioni › Aspetto): ogni scheda con i colori del suo tema. */
+.themes { display: grid; gap: 10px; margin-top: 10px; }
+.theme-card { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; text-align: left; border: 0; border-radius: var(--radius); box-shadow: inset 0 0 0 1.5px var(--line); color: #1c2b24; }
+.theme-card.on { box-shadow: inset 0 0 0 2.5px var(--accent); }
+.theme-sample { flex: none; display: flex; gap: 4px; padding: 10px 8px; border-radius: 6px; }
+.theme-sample i { width: 14px; height: 26px; border-radius: 3px; }
+.theme-text { display: grid; gap: 2px; min-width: 0; }
+.theme-text b { font: 400 1.1rem/1.2 'Young Serif', Georgia, serif; }
+.theme-text span { font-size: 0.84rem; opacity: 0.75; }
+/* L'anteprima del tema moderno usa i suoi titoli e i suoi angoli. */
+.theme-moderno .theme-text b { font: 700 1.05rem/1.2 var(--body); }
+.theme-moderno .theme-sample { border-radius: 10px; }

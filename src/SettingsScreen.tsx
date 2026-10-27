@@ -8,6 +8,7 @@ import { routesPending } from './routing'
 import { IconBack } from './icons'
 import { applyUpdate, buildLabel, versionLabel } from './update'
 import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
+import { THEMES, setTheme, useTheme } from './theme'
 import type { Route } from './App'
 
 export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
@@ -15,6 +16,7 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
   const [msg, setMsg] = useState<string>()
   const [working, setWorking] = useState(false)
   const countryColor = useCountryColor()
+  const theme = useTheme()
   const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
 
   const counts = useLiveQuery(async () => ({ trips: await db.trips.count(), stops: await db.stops.count(), photos: await db.photos.count() }))
@@ -51,6 +53,33 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
 
       <h2 className="section-title">Aspetto</h2>
       <div className="list">
+        <div style={{ display: 'block' }}>
+          <span className="label soft">Tema</span>
+          {/* Ogni scheda si disegna con i colori del suo tema: si sceglie guardando. */}
+          <div className="themes" role="radiogroup" aria-label="Tema">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={theme === t.id}
+                className={`theme-card theme-${t.id}${theme === t.id ? ' on' : ''}`}
+                style={{ background: t.preview.bg }}
+                onClick={() => setTheme(t.id)}
+              >
+                <span className="theme-sample" style={{ background: t.preview.card }}>
+                  {[t.preview.accent, t.preview.blue, t.preview.saff].map((c) => (
+                    <i key={c} style={{ background: c }} />
+                  ))}
+                </span>
+                <span className="theme-text">
+                  <b style={{ color: t.preview.accent }}>{t.name}</b>
+                  <span>{t.description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ display: 'block' }}>
           <span className="label soft">Colore dei paesi visitati</span>
           <div className="swatches" style={{ marginTop: 10 }}>
