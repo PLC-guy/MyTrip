@@ -131,14 +131,18 @@ img { display: block; }
 .open-trip { width: calc(100% - 32px); margin: 0 16px 14px; }
 
 /* --- Cronologia: linea tratteggiata blu con i pallini, come nel sito --- */
-.timeline { position: relative; padding-left: 30px; margin-top: 8px; }
-.timeline::before { content: ''; position: absolute; left: 9px; top: 6px; bottom: 6px; border-left: 3px dotted var(--blue); }
-.day { position: relative; margin: 26px 0 8px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.day::before { content: ''; position: absolute; left: -29px; top: 6px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--bg); }
+/* Ogni giorno è un riquadro verde tè, come le schede dei viaggi in Home, con la
+   sua linea della cronologia dentro; le tappe sono schede chiare sul verde. */
+.timeline { margin-top: 8px; }
+.timeline > section { position: relative; padding: 14px 14px 4px 44px; margin-bottom: 14px; border-radius: var(--radius); background: var(--card); }
+.timeline > section::before { content: ''; position: absolute; left: 23px; top: 22px; bottom: 22px; border-left: 3px dotted var(--blue); }
+.day { position: relative; margin: 0 0 10px; padding-bottom: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; border-bottom: 1.5px dashed rgb(28 43 36 / 22%); }
+.day::before { content: ''; position: absolute; left: -29px; top: 6px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
 .day b { font: 400 1.35rem/1.2 var(--display); }
 .day span { color: var(--muted); font-size: 0.92rem; }
 .stop { position: relative; display: block; width: 100%; padding: 12px 14px; margin-bottom: 10px; text-align: left; border: 0; border-radius: var(--radius); background: var(--card); }
-.timeline .stop::before { content: ''; position: absolute; left: -25px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--bg); }
+.timeline .stop { background: var(--paper); }
+.timeline .stop::before { content: ''; position: absolute; left: -25px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
 .stop-head { display: flex; justify-content: space-between; gap: 10px; }
 .stop-title { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; min-width: 0; }
 .stop-title .n { font: 400 0.95rem var(--display); color: var(--muted); }
@@ -294,10 +298,12 @@ textarea.field { min-height: 84px; resize: vertical; }
 .install-steps li.on .num { background: var(--accent); color: #fff; }
 .install-steps svg { width: 1.05em; height: 1.05em; vertical-align: -0.2em; }
 /* ⚠️ La freccia è ancorata allo SCHERMO: indica la barra del browser, fuori dalla
-   pagina. Su iPhone sopra i tre puntini di Safari (centro a ~56px dal bordo
-   destro, misura presa in MyBsns su uno schermo da 375pt). */
+   pagina. Su iPhone sopra l'icona ≡ di Safari (iOS 26), a sinistra dell'indirizzo:
+   centro a ~114pt dal bordo sinistro, misurato su uno screenshot dell'utente
+   (393pt di larghezza, 27/10/2026). Il pulsante «indietro» a sinistra ha
+   larghezza fissa, quindi la distanza dal bordo sinistro non cambia col telefono. */
 .install-arrow { position: fixed; width: 24px; height: 48px; color: var(--saff); pointer-events: none; }
-.install-arrow.down { right: 44px; bottom: calc(env(safe-area-inset-bottom) + 12px); animation: install-down 1.4s ease-in-out infinite; }
+.install-arrow.down { left: 102px; bottom: calc(env(safe-area-inset-bottom) + 12px); animation: install-down 1.4s ease-in-out infinite; }
 .install-arrow.up { right: 12px; top: 8px; animation: install-up 1.4s ease-in-out infinite; }
 @keyframes install-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
 @keyframes install-up { 0%, 100% { transform: rotate(180deg) translateY(0); } 50% { transform: rotate(180deg) translateY(8px); } }

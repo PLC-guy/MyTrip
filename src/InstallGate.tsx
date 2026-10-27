@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { IconAddToHome, IconShare } from './icons'
+import { IconAddToHome, IconChevronDown, IconMenuLines, IconShare } from './icons'
 import { useEnvironment, useInstallPrompt, type Platform } from './install'
 
 /**
@@ -27,7 +27,7 @@ function useActiveStep(count: number): number {
   return active
 }
 
-/** Freccia ancorata allo schermo: in basso a destra su iPhone, in alto a destra altrove. */
+/** Freccia ancorata allo schermo: in basso sul menu ≡ di Safari su iPhone, in alto a destra altrove. */
 function Arrow({ dir }: { dir: 'down' | 'up' }) {
   return (
     <svg className={`install-arrow ${dir}`} viewBox="0 0 24 48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -71,14 +71,18 @@ function Instructions({ platform, inApp, install }: { platform: Platform; inApp:
   if (platform === 'ios') {
     return (
       <>
-        <p className="install-lead">Quattro tocchi e MyTrip diventa un'app vera, con la sua icona sulla Home.</p>
+        <p className="install-lead">Pochi tocchi e MyTrip diventa un'app vera, con la sua icona sulla Home.</p>
         <Steps
           steps={[
-            // ⚠️ Su iOS recente Condividi sta dentro il menu dei tre puntini, non in vista.
-            <>Tocca i <strong>tre puntini</strong> in basso a destra.</>,
+            // ⚠️ Safari di iOS 26 (screenshot dell'utente, 27/10/2026): niente più
+            // tre puntini. Il menu è l'icona ≡ a sinistra dell'indirizzo, nella
+            // barra in basso; Condividi sta lì dentro, e «Aggiungi alla schermata
+            // Home» è nascosta sotto «Visualizza altro» del foglio di condivisione.
+            <>Tocca <IconMenuLines /> a sinistra dell'<strong>indirizzo</strong>, in basso.</>,
             <>Scegli <strong>Condividi</strong> <IconShare />.</>,
+            <>Tocca <strong>«Visualizza altro»</strong> <IconChevronDown />.</>,
             // ⚠️ Il testo esatto di iOS: in un elenco lungo si cerca la parola.
-            <>Scorri e scegli <strong>«Aggiungi alla schermata Home»</strong> <IconAddToHome />.</>,
+            <>Scegli <strong>«Aggiungi alla schermata Home»</strong> <IconAddToHome />.</>,
             <>Chiudi Safari e apri MyTrip <strong>dall'icona sulla Home</strong>.</>,
           ]}
         />

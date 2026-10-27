@@ -50,3 +50,6 @@ export const IconAddToHome = () => (
     <path d="M12 8.25v7.5M8.25 12h7.5" />
   </Svg>
 )
+/** Il menu della pagina di Safari (iOS 26): tre righe, a sinistra dell'indirizzo. */
+export const IconMenuLines = () => <Svg><path d="M4 7h16M4 12h16M4 17h16" /></Svg>
+export const IconChevronDown = () => <Svg><path d="M6 9l6 6 6-6" /></Svg>
