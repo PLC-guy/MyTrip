@@ -1,7 +1,8 @@
 {
   "name": "mytrip",
   "private": true,
-  "version": "0.9.0",
+  "license": "UNLICENSED",
+  "version": "0.9.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
