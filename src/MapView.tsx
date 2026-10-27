@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import maplibregl from 'maplibre-gl'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { FeatureCollection } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { cssColor } from './theme'
 
@@ -23,8 +23,6 @@ export interface MapLine {
   flight?: boolean
   /** Linea dritta perché il percorso vero non si conosce (treno, barca, non trovato): tratteggio più leggero. */
   straight?: boolean
-  /** Icona del mezzo, disegnata a metà del tratto. */
-  icon?: string
 }
 
 interface Props {
@@ -91,7 +89,6 @@ const TIP = 7 // altezza della punta
 const RATIO = 2 // densità del disegno (schermi retina)
 
 const pinImageId = (p: MapPin) => `p|${p.img}|${p.color}|${p.star ? 1 : 0}|${p.count ?? 1}`
-const legImageId = (icon: string) => `t|${icon}`
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
@@ -154,29 +151,6 @@ async function drawPin(p: MapPin): Promise<ImageData> {
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-/** Icona del mezzo: l'emoji su un dischetto chiaro. */
-function drawLegIcon(icon: string): ImageData {
-  const size = 26
-  const s = RATIO
-  const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = size * s
-  const ctx = canvas.getContext('2d')!
-  ctx.scale(s, s)
-  ctx.fillStyle = cssColor('--bg', '#F5F0E6')
-  ctx.strokeStyle = ink()
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.globalAlpha = 0.25
-  ctx.stroke()
-  ctx.globalAlpha = 1
-  ctx.font = '14px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(icon, size / 2, size / 2 + 1)
-  return ctx.getImageData(0, 0, canvas.width, canvas.height)
-}
 
 export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, world, fitMaxZoom = 15, fitPoints, fitLines = lines, countries, children }: Props) {
   const el = useRef<HTMLDivElement>(null)
@@ -212,7 +186,6 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
     m.on('style.load', () => {
       localize(m)
       m.addSource('route', { type: 'geojson', data: EMPTY })
-      m.addSource('legs', { type: 'geojson', data: EMPTY })
       m.addSource('pins', { type: 'geojson', data: EMPTY })
       // Due livelli per il percorso: il tratteggio non può cambiare da tratto a tratto.
       const paint: maplibregl.LineLayerSpecification['paint'] = { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9 }
@@ -243,8 +216,6 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
           'circle-stroke-width': 2,
         },
       })
-      // I mezzi cedono il posto alle miniature: livello sotto, quindi piazzato dopo.
-      m.addLayer({ id: 'legs', type: 'symbol', source: 'legs', layout: { 'icon-image': ['get', 'icon'], 'icon-padding': 2 } })
       m.addLayer({
         id: 'pin-thumbs',
         type: 'symbol',
@@ -288,28 +259,12 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
     }
   }, [])
 
-  // Percorso e icone dei mezzi.
+  // Percorso. Nessuna icona del mezzo sulla mappa (scelta dell'utente, 27/10/2026):
+  // il mezzo si legge nella cronologia.
   useEffect(() => {
     const m = map.current
     if (!m || !ready) return
     ;(m.getSource('route') as maplibregl.GeoJSONSource).setData(toGeoJson(lines))
-    for (const l of lines) {
-      if (l.icon && !m.hasImage(legImageId(l.icon))) m.addImage(legImageId(l.icon), drawLegIcon(l.icon), { pixelRatio: RATIO })
-    }
-    // L'icona va a metà del tratto: fra i due estremi se è dritto, sul punto
-    // centrale se segue un percorso.
-    const legs: Feature[] = lines
-      .filter((l) => l.icon && l.points.length >= 2)
-      .map((l) => {
-        let lat: number
-        let lon: number
-        if (l.points.length === 2) {
-          const [[aLat, aLon], [bLat, bLon]] = l.points
-          ;[lat, lon] = [(aLat + bLat) / 2, (aLon + bLon) / 2]
-        } else [lat, lon] = l.points[Math.floor(l.points.length / 2)]
-        return { type: 'Feature', properties: { icon: legImageId(l.icon!) }, geometry: { type: 'Point', coordinates: [lon, lat] } }
-      })
-    ;(m.getSource('legs') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: legs })
   }, [lines, ready])
 
   // Puntatori. Le miniature si disegnano in sottofondo: finché non sono pronte

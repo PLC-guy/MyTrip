@@ -10,6 +10,7 @@ import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from 
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
+import { backupDue, describeBackupAge, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
 
 interface TripRow {
@@ -21,11 +22,21 @@ interface TripRow {
   countries: string[]
 }
 
-/** iPhone fuori dall'app installata: i dati del browser sono un archivio a parte. */
-const inSafariTab = /iPhone|iPad/.test(navigator.userAgent) && !(navigator as Navigator & { standalone?: boolean }).standalone
-
 export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   const [creating, setCreating] = useState(false)
+  const [backingUp, setBackingUp] = useState(false)
+  const backup = useBackupState()
+  const photoCount = useLiveQuery(() => db.photos.count())
+  const due = photoCount != null && backupDue(backup, photoCount)
+
+  async function doBackup() {
+    setBackingUp(true)
+    try {
+      await runBackup()
+    } finally {
+      setBackingUp(false)
+    }
+  }
   const [name, setName] = useState('')
   const [kind, setKind] = useState<TripKind>('piacere')
 
@@ -137,9 +148,19 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         </div>
       )}
 
-      {inSafariTab && (
-        <div className="note-box warm">
-          Per usarla come app: tocca <b>Condividi</b> → <b>Aggiungi alla schermata Home</b>. I viaggi salvati qui in Safari non si vedono nell'app installata.
+      {due && (
+        <div className="note-box warm backup-due">
+          <span>
+            <b>Fai un backup</b> · ultimo: {describeBackupAge(backup)}. I viaggi esistono solo su questo telefono.
+          </span>
+          <span className="row">
+            <button className="btn small-btn" disabled={backingUp} onClick={() => void doBackup()}>
+              Esporta ora
+            </button>
+            <button className="btn ghost small-btn" onClick={snoozeBackup}>
+              Più tardi
+            </button>
+          </span>
         </div>
       )}
 

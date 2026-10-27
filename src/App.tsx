@@ -6,6 +6,7 @@ import StarsScreen from './StarsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
+import type { SettingsPage } from './SettingsScreen'
 import InstallGate from './InstallGate'
 import { readEnvironment } from './install'
 import { geocodePending } from './geocode'
@@ -18,7 +19,7 @@ import { applyUpdate, startAutoUpdate } from './update'
 export type Route =
   | { name: 'home' }
   | { name: 'trip'; id: string; stop?: string }
-  | { name: 'settings' }
+  | { name: 'settings'; page?: SettingsPage }
   | { name: 'stars' }
   | { name: 'search' }
   | { name: 'countries' }
@@ -46,6 +47,8 @@ function readRoute(): Route {
     return { name: 'trip', id, stop: stop || undefined }
   }
   if (h === '#/impostazioni') return { name: 'settings' }
+  if (h === '#/impostazioni/aspetto') return { name: 'settings', page: 'aspetto' }
+  if (h === '#/impostazioni/backup') return { name: 'settings', page: 'backup' }
   if (h === '#/speciali') return { name: 'stars' }
   if (h === '#/cerca') return { name: 'search' }
   if (h === '#/paesi') return { name: 'countries' }
@@ -54,7 +57,7 @@ function readRoute(): Route {
 
 function writeRoute(r: Route): string {
   if (r.name === 'trip') return `#/viaggio/${encodeURIComponent(r.id)}${r.stop ? '/' + encodeURIComponent(r.stop) : ''}`
-  if (r.name === 'settings') return '#/impostazioni'
+  if (r.name === 'settings') return r.page ? `#/impostazioni/${r.page}` : '#/impostazioni'
   if (r.name === 'stars') return '#/speciali'
   if (r.name === 'search') return '#/cerca'
   if (r.name === 'countries') return '#/paesi'
@@ -82,7 +85,7 @@ export default function App() {
   // ⚠️ Fra graffe: nei browser recenti scrollTo restituisce una Promise, e
   // React la prenderebbe per una funzione di pulizia (schermata bianca).
   // Non quando cambia solo la tappa aperta dentro lo stesso viaggio.
-  const screenKey = route.name === 'trip' ? `trip:${route.id}` : route.name
+  const screenKey = route.name === 'trip' ? `trip:${route.id}` : route.name === 'settings' && route.page ? `settings:${route.page}` : route.name
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [screenKey])
@@ -107,7 +110,7 @@ export default function App() {
       <ErrorBoundary key={screenKey}>
         {route.name === 'home' && <HomeScreen go={go} />}
         {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
-        {route.name === 'settings' && <SettingsScreen go={go} />}
+        {route.name === 'settings' && <SettingsScreen page={route.page} go={go} />}
         {route.name === 'stars' && <StarsScreen go={go} />}
         {route.name === 'search' && <SearchScreen go={go} />}
         {route.name === 'countries' && <CountriesScreen go={go} />}

@@ -67,11 +67,18 @@ function safeName(name: string): string {
   return name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'viaggio'
 }
 
-export async function exportTrip(tripId: string): Promise<File> {
-  const trip = await db.trips.get(tripId)
-  if (!trip) throw new Error('Viaggio non trovato')
-  const data = await build('trip', [trip])
-  return new File([JSON.stringify(data)], `${safeName(trip.name)}.mytrip.json`, { type: 'application/json' })
+/**
+ * Uno o più viaggi scelti (Impostazioni › Backup e ripristino). Un solo viaggio
+ * prende il suo nome; più viaggi stanno in un unico file, che si reimporta allo
+ * stesso modo. Non conta come backup completo: per quello c'è `exportBackup`.
+ */
+export async function exportTrips(tripIds: string[]): Promise<File> {
+  const trips = (await db.trips.bulkGet(tripIds)).filter((t): t is Trip => !!t)
+  if (trips.length === 0) throw new Error('Nessun viaggio scelto')
+  const data = await build('trip', trips)
+  const day = new Date().toISOString().slice(0, 10)
+  const name = trips.length === 1 ? `${safeName(trips[0].name)}.mytrip.json` : `MyTrip-${trips.length}-viaggi-${day}.mytrip.json`
+  return new File([JSON.stringify(data)], name, { type: 'application/json' })
 }
 
 export async function exportBackup(): Promise<File> {
@@ -84,14 +91,15 @@ export async function exportBackup(): Promise<File> {
  * Consegna il file: su iPhone col foglio di condivisione (Salva in File,
  * AirDrop, Messaggi…), altrove come download.
  */
-export async function deliverFile(file: File): Promise<void> {
+/** Consegna il file; false se la condivisione è stata annullata (serve al promemoria di backup). */
+export async function deliverFile(file: File): Promise<boolean> {
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] })
-      return
+      return true
     } catch (e) {
       // Annullato da chi usa l'app: non è un errore.
-      if (e instanceof DOMException && e.name === 'AbortError') return
+      if (e instanceof DOMException && e.name === 'AbortError') return false
     }
   }
   const url = URL.createObjectURL(file)
@@ -100,6 +108,7 @@ export async function deliverFile(file: File): Promise<void> {
   a.download = file.name
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  return true
 }
 
 export interface ImportSummary {

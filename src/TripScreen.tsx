@@ -12,7 +12,7 @@ import StopSheet from './StopSheet'
 import CoverSheet from './CoverSheet'
 import { thumbUrl } from './thumbUrl'
 import { setBusy } from './update'
-import { deliverFile, exportTrip } from './backup'
+import { deliverFile } from './backup'
 import { exportKml } from './kml'
 import { fmtKm, tripStats } from './stats'
 import { TRANSPORTS, transportOf } from './transport'
@@ -524,10 +524,10 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <div className="stack">
             <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
             <button className="btn ghost" onClick={() => setPanel({ kind: 'cover' })}>Scegli la copertina</button>
-            <button className="btn ghost" onClick={() => void deliver(() => exportTrip(id))} disabled={data.photos.length === 0}>Esporta il viaggio</button>
             <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps (KML)</button>
             <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Elimina il viaggio</button>
           </div>
+          <p className="small">Per salvare il viaggio o passarlo a qualcuno: Impostazioni › Backup e ripristino › Esporta alcuni viaggi.</p>
           <p className="small">
             Il file KML si importa in Google My Maps (Crea una nuova mappa → Importa) o si apre in Google Earth: contiene tappe, date, note e percorso, ma non le foto.
           </p>

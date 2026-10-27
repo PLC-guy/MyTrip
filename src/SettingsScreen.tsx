@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './db'
-import { deliverFile, exportBackup, importFile } from './backup'
-import { fmtBytes, plural } from './format'
+import { deliverFile, exportTrips, importFile } from './backup'
+import Sheet from './Sheet'
+import { backupDue, describeBackupAge, runBackup, useBackupState } from './backupReminder'
+import { fmtBytes, fmtRange, plural } from './format'
 import { geocodePending } from './geocode'
 import { routesPending } from './routing'
 import { IconBack } from './icons'
@@ -11,14 +13,52 @@ import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
 import { THEMES, setTheme, useTheme } from './theme'
 import type { Route } from './App'
 
-export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
-  const input = useRef<HTMLInputElement>(null)
-  const [msg, setMsg] = useState<string>()
-  const [working, setWorking] = useState(false)
-  const countryColor = useCountryColor()
-  const theme = useTheme()
-  const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
+/**
+ * IMPOSTAZIONI
+ *
+ * In alto le voci che si CAMBIANO, come pulsanti che aprono una pagina loro
+ * (Aspetto, Backup e ripristino); sotto, subito visibili, quelle in sola
+ * lettura (Archivio, Versione). Struttura come in MyBsns, richiesta il
+ * 27/10/2026. Le pagine stanno nell'indirizzo (#/impostazioni/aspetto), così
+ * «indietro» e un aggiornamento automatico riportano dove si era.
+ */
+export type SettingsPage = 'aspetto' | 'backup'
 
+export default function SettingsScreen({ page, go }: { page?: SettingsPage; go: (r: Route) => void }) {
+  if (page === 'aspetto') return <AppearancePage go={go} />
+  if (page === 'backup') return <BackupPage go={go} />
+  return <SettingsHome go={go} />
+}
+
+function Bar({ title, back }: { title: string; back: () => void }) {
+  return (
+    <div className="bar">
+      <button className="icon-btn" onClick={back} aria-label="Indietro">
+        <IconBack />
+      </button>
+      <h1>{title}</h1>
+    </div>
+  )
+}
+
+/** Voce che apre una pagina: titolo, riassunto dello stato attuale, freccia. */
+function NavItem({ title, detail, due, onClick }: { title: string; detail: ReactNode; due?: boolean; onClick: () => void }) {
+  return (
+    <button className={`nav-item${due ? ' due' : ''}`} onClick={onClick}>
+      <span>
+        <b>{title}</b>
+        <span className="k">{detail}</span>
+      </span>
+      <span className="chev" aria-hidden="true">›</span>
+    </button>
+  )
+}
+
+function SettingsHome({ go }: { go: (r: Route) => void }) {
+  const theme = useTheme()
+  const backup = useBackupState()
+  const [msg, setMsg] = useState<string>()
+  const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
   const counts = useLiveQuery(async () => ({ trips: await db.trips.count(), stops: await db.stops.count(), photos: await db.photos.count() }))
 
   useEffect(() => {
@@ -29,100 +69,19 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
     })()
   }, [counts])
 
-  async function run(job: () => Promise<string | void>) {
-    setWorking(true)
-    setMsg(undefined)
-    try {
-      const r = await job()
-      if (r) setMsg(r)
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : String(e))
-    } finally {
-      setWorking(false)
-    }
-  }
-
   return (
     <div className="page">
-      <div className="bar">
-        <button className="icon-btn" onClick={() => go({ name: 'home' })} aria-label="Indietro">
-          <IconBack />
-        </button>
-        <h1>Impostazioni</h1>
-      </div>
+      <Bar title="Impostazioni" back={() => go({ name: 'home' })} />
 
-      <h2 className="section-title">Aspetto</h2>
-      <div className="list">
-        <div style={{ display: 'block' }}>
-          <span className="label soft">Tema</span>
-          {/* Ogni scheda si disegna con i colori del suo tema: si sceglie guardando. */}
-          <div className="themes" role="radiogroup" aria-label="Tema">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={theme === t.id}
-                className={`theme-card theme-${t.id}${theme === t.id ? ' on' : ''}`}
-                style={{ background: t.preview.bg }}
-                onClick={() => setTheme(t.id)}
-              >
-                <span className="theme-sample" style={{ background: t.preview.card }}>
-                  {[t.preview.accent, t.preview.blue, t.preview.saff].map((c) => (
-                    <i key={c} style={{ background: c }} />
-                  ))}
-                </span>
-                <span className="theme-text">
-                  <b style={{ color: t.preview.accent }}>{t.name}</b>
-                  <span>{t.description}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'block' }}>
-          <span className="label soft">Colore dei paesi visitati</span>
-          <div className="swatches" style={{ marginTop: 10 }}>
-            {COUNTRY_COLORS.map((c) => (
-              <button key={c} className={`swatch${countryColor.toLowerCase() === c.toLowerCase() ? ' on' : ''}`} style={{ background: c }} aria-label={`Colore ${c}`} onClick={() => setCountryColor(c)} />
-            ))}
-            {/* Colore libero: il selettore di sistema dell'iPhone. */}
-            <label className={`swatch swatch-custom${COUNTRY_COLORS.some((c) => c.toLowerCase() === countryColor.toLowerCase()) ? '' : ' on'}`} aria-label="Scegli un altro colore">
-              <input type="color" value={countryColor} onChange={(e) => setCountryColor(e.target.value)} />
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <h2 className="section-title">Backup</h2>
-      <div className="stack" style={{ display: 'grid', gap: 10 }}>
-        <button className="btn ghost" disabled={working || !counts?.trips} onClick={() => void run(async () => deliverFile(await exportBackup()))}>
-          Esporta tutti i viaggi
-        </button>
-        <label className="btn ghost" aria-disabled={working}>
-          Importa un viaggio o un backup
-          <input
-            ref={input}
-            className="hidden-input"
-            type="file"
-            accept="application/json,.json"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (!file) return
-              void run(async () => {
-                const r = await importFile(file)
-                void geocodePending()
-                void routesPending()
-                return `Importato: ${r.trips.join(', ')} (${plural(r.photos, 'foto', 'foto')})`
-              })
-            }}
-          />
-        </label>
-        {msg && <div className="note-box">{msg}</div>}
-        <p className="small">
-          L'export contiene viaggi, tappe, note e miniature: si reimporta su un altro telefono o su un computer. Se un viaggio c'è già, si aggiorna senza doppioni.
-        </p>
+      <div className="list nav-list">
+        <NavItem title="Aspetto" detail={`Tema: ${THEMES.find((t) => t.id === theme)?.name}`} onClick={() => go({ name: 'settings', page: 'aspetto' })} />
+        {/* Il promemoria si vede anche qui: un backup da fare non deve sparire dietro un livello. */}
+        <NavItem
+          title="Backup e ripristino"
+          detail={`Ultimo backup: ${describeBackupAge(backup)}`}
+          due={counts != null && backupDue(backup, counts.photos)}
+          onClick={() => go({ name: 'settings', page: 'backup' })}
+        />
       </div>
 
       <h2 className="section-title">Archivio</h2>
@@ -153,7 +112,182 @@ export default function SettingsScreen({ go }: { go: (r: Route) => void }) {
           Ricarica l'ultima versione
         </button>
       </div>
+      {msg && <div className="note-box" style={{ marginTop: 10 }}>{msg}</div>}
       <p className="small">Non serve quasi mai: l'app si aggiorna da sola quando la apri.</p>
     </div>
+  )
+}
+
+function AppearancePage({ go }: { go: (r: Route) => void }) {
+  const countryColor = useCountryColor()
+  const theme = useTheme()
+  return (
+    <div className="page">
+      <Bar title="Aspetto" back={() => go({ name: 'settings' })} />
+
+      <h2 className="section-title">Tema</h2>
+      {/* Ogni scheda si disegna con i colori del suo tema: si sceglie guardando. */}
+      <div className="themes" role="radiogroup" aria-label="Tema">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={theme === t.id}
+            className={`theme-card theme-${t.id}${theme === t.id ? ' on' : ''}`}
+            style={{ background: t.preview.bg }}
+            onClick={() => setTheme(t.id)}
+          >
+            <span className="theme-sample" style={{ background: t.preview.card }}>
+              {[t.preview.accent, t.preview.blue, t.preview.saff].map((c) => (
+                <i key={c} style={{ background: c }} />
+              ))}
+            </span>
+            <span className="theme-text">
+              <b style={{ color: t.preview.accent }}>{t.name}</b>
+              <span>{t.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <h2 className="section-title">Colore dei paesi visitati</h2>
+      <div className="swatches">
+        {COUNTRY_COLORS.map((c) => (
+          <button key={c} className={`swatch${countryColor.toLowerCase() === c.toLowerCase() ? ' on' : ''}`} style={{ background: c }} aria-label={`Colore ${c}`} onClick={() => setCountryColor(c)} />
+        ))}
+        {/* Colore libero: il selettore di sistema dell'iPhone. */}
+        <label className={`swatch swatch-custom${COUNTRY_COLORS.some((c) => c.toLowerCase() === countryColor.toLowerCase()) ? '' : ' on'}`} aria-label="Scegli un altro colore">
+          <input type="color" value={countryColor} onChange={(e) => setCountryColor(e.target.value)} />
+        </label>
+      </div>
+      <p className="small">Temi e colori valgono solo su questo dispositivo e non finiscono negli export.</p>
+    </div>
+  )
+}
+
+function BackupPage({ go }: { go: (r: Route) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [msg, setMsg] = useState<string>()
+  const [working, setWorking] = useState(false)
+  const backup = useBackupState()
+  const trips = useLiveQuery(() => db.trips.count())
+  const [choosing, setChoosing] = useState(false)
+
+  async function run(job: () => Promise<string | void>) {
+    setWorking(true)
+    setMsg(undefined)
+    try {
+      const r = await job()
+      if (r) setMsg(r)
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <div className="page">
+      <Bar title="Backup e ripristino" back={() => go({ name: 'settings' })} />
+
+      <h2 className="section-title">Backup</h2>
+      <p className="small">
+        Ultimo backup completo: <b>{describeBackupAge(backup)}</b>. I viaggi esistono solo su questo telefono: conserva il file fuori (File, iCloud, computer).
+      </p>
+      <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup fatto: conservalo fuori dal telefono (File, iCloud, computer).' : undefined))}>
+        Esporta tutti i viaggi
+      </button>
+
+      <h2 className="section-title">Esporta alcuni viaggi</h2>
+      <p className="small">Per salvare solo qualche viaggio o passarlo a qualcuno (per esempio da importare sul suo computer). Più viaggi finiscono in un unico file.</p>
+      <button className="btn ghost" disabled={working || !trips} onClick={() => setChoosing(true)}>
+        Scegli i viaggi da esportare
+      </button>
+      {choosing && (
+        <ChooseTrips
+          onClose={() => setChoosing(false)}
+          onExport={(ids) => {
+            setChoosing(false)
+            void run(async () => ((await deliverFile(await exportTrips(ids))) ? `Esportat${ids.length === 1 ? 'o 1 viaggio' : `i ${ids.length} viaggi`}.` : undefined))
+          }}
+        />
+      )}
+
+      <h2 className="section-title">Ripristino</h2>
+      <p className="small">Si importa un singolo viaggio o un backup completo, anche fatto su un altro telefono o su un computer. Se un viaggio c'è già, si aggiorna senza doppioni; niente viene cancellato.</p>
+      <label className="btn ghost" aria-disabled={working}>
+        Importa un viaggio o un backup
+        <input
+          ref={input}
+          className="hidden-input"
+          type="file"
+          accept="application/json,.json"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            void run(async () => {
+              const r = await importFile(file)
+              void geocodePending()
+              void routesPending()
+              return `Importato: ${r.trips.join(', ')} (${plural(r.photos, 'foto', 'foto')})`
+            })
+          }}
+        />
+      </label>
+      {msg && <div className="note-box" style={{ marginTop: 12 }}>{msg}</div>}
+      <p className="small">Gli export contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
+    </div>
+  )
+}
+
+/** Elenco dei viaggi con una casella ciascuno; dal più recente, come in Home. */
+function ChooseTrips({ onClose, onExport }: { onClose: () => void; onExport: (ids: string[]) => void }) {
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const rows = useLiveQuery(async () => {
+    const trips = await db.trips.toArray()
+    const stops = await db.stops.orderBy('start').toArray()
+    return trips
+      .map((trip) => {
+        const own = stops.filter((s) => s.tripId === trip.id)
+        return { trip, stops: own.length, first: own[0]?.first, last: own.at(-1)?.first }
+      })
+      .sort((a, b) => (b.last ?? '9999').localeCompare(a.last ?? '9999'))
+  })
+  const all = rows != null && rows.length > 0 && picked.size === rows.length
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const next = new Set(p)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  return (
+    <Sheet onClose={onClose}>
+      <h2>Quali viaggi?</h2>
+      <label className="check pick-all">
+        <input type="checkbox" checked={all} onChange={() => setPicked(all ? new Set() : new Set(rows?.map((r) => r.trip.id)))} />
+        Tutti
+      </label>
+      <div className="list pick-list">
+        {rows?.map((r) => (
+          <label key={r.trip.id} className="pick">
+            <input type="checkbox" checked={picked.has(r.trip.id)} onChange={() => toggle(r.trip.id)} />
+            <span className="dot" style={{ background: r.trip.color }} />
+            <span className="pick-text">
+              <b>{r.trip.name}</b>
+              <span className="k">{r.first && r.last ? `${fmtRange(r.first, r.last)} · ${plural(r.stops, 'tappa', 'tappe')}` : 'Ancora vuoto'}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="stack">
+        <button className="btn" disabled={picked.size === 0} onClick={() => onExport([...picked])}>
+          {picked.size === 0 ? 'Scegli almeno un viaggio' : `Esporta ${plural(picked.size, 'viaggio', 'viaggi')}`}
+        </button>
+      </div>
+    </Sheet>
   )
 }
