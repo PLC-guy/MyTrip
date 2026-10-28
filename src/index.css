@@ -183,14 +183,14 @@ img { display: block; }
    sua linea della cronologia dentro; le tappe sono schede chiare sul verde. */
 .timeline { margin-top: 8px; }
 .timeline > section { position: relative; padding: 14px 14px 4px 44px; margin-bottom: 14px; border-radius: var(--radius); background: var(--card); }
-.timeline > section::before { content: ''; position: absolute; left: 23px; top: 22px; bottom: 22px; border-left: 3px dotted var(--blue); }
+.timeline > section::before { content: ''; position: absolute; left: 23px; top: 22px; bottom: 22px; border-left: 3px dotted var(--day, var(--blue)); }
 .day { position: relative; margin: 0 0 10px; padding-bottom: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 22%, transparent); }
-.day::before { content: ''; position: absolute; left: -29px; top: 6px; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
+.day::before { content: ''; position: absolute; left: -29px; top: 6px; width: 15px; height: 15px; border-radius: 50%; background: var(--day, var(--accent)); box-shadow: 0 0 0 3px var(--card); }
 .day b { font: var(--display-weight) 1.35rem/1.2 var(--display); }
 .day span { color: var(--muted); font-size: 0.92rem; }
 .stop { position: relative; display: block; width: 100%; padding: 12px 14px; margin-bottom: 10px; text-align: left; border: 0; border-radius: var(--radius); background: var(--card); }
 .timeline .stop { background: var(--paper); }
-.timeline .stop::before { content: ''; position: absolute; left: -25px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--card); }
+.timeline .stop::before { content: ''; position: absolute; left: -25px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--day, var(--accent)); box-shadow: 0 0 0 3px var(--card); }
 .stop-head { display: flex; justify-content: space-between; gap: 10px; }
 .stop-title { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; min-width: 0; }
 .stop-title .n { font: var(--display-weight) 0.95rem var(--display); color: var(--muted); }
@@ -397,3 +397,8 @@ textarea.field { min-height: 84px; resize: vertical; }
 .pick-text { display: grid; gap: 2px; min-width: 0; }
 .pick-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-text .k { font-size: 0.86rem; }
+
+/* ---- Legenda dei giorni sotto la mappa del viaggio: stesso colore di tappe e tratti. */
+.day-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.day-legend button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 0; border-radius: 999px; background: var(--card); color: var(--ink); font-size: 0.8rem; font-weight: 700; }
+.day-legend .dot { margin: 0; width: 10px; height: 10px; }

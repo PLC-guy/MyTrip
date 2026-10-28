@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip, stopTitle, type Photo, type Stop, type TripKind } from './db'
 import KindPicker from './KindPicker'
-import { dayOf, fmtDayLong, fmtDuration, fmtRange, fmtTime, plural } from './format'
+import { dayOf, fmtDayLong, fmtDayShort, fmtDuration, fmtRange, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
 import { IconBack, IconMore, IconPhotos, IconPlay, IconStop } from './icons'
 import { importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
@@ -33,6 +33,16 @@ type Panel =
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
   | { kind: 'transport'; stopId: string }
+
+/**
+ * Un colore per giorno, sulla mappa e nella cronologia: si capisce a colpo
+ * d'occhio quali tappe sono del primo giorno, quali del secondo… (richiesta
+ * dell'utente, 28/10/2026). Toni della palette dei viaggi, in un ordine che
+ * alterna caldi e freddi perché due giorni vicini non si somiglino. Oltre il
+ * settimo giorno i colori ricominciano: la legenda sotto la mappa li distingue.
+ * Con un giorno solo resta il colore del viaggio.
+ */
+const DAY_COLORS = ['#2F6B4F', '#C98A1B', '#1F4E8C', '#A3432A', '#2F8C86', '#6B4F8C', '#8C5A2F']
 
 /** Quanto resta su ogni tappa l'itinerario animato. */
 const PLAY_MS = 2600
@@ -94,19 +104,26 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }, [data?.stops])
 
   const color = data?.trip?.color ?? '#888'
+  /** Colore di ogni giorno (chiave "AAAA-MM-GG") e di ogni tappa. */
+  const dayColor = useMemo(() => new Map(days.map((d, i) => [d.day, days.length > 1 ? DAY_COLORS[i % DAY_COLORS.length] : color])), [days, color])
+  const stopColor = useMemo(() => new Map((data?.stops ?? []).map((s) => [s.id, dayColor.get(dayOf(s.first)) ?? color])), [data?.stops, dayColor, color])
   const pins = useMemo<MapPin[]>(
     () =>
       (data?.stops ?? []).map((s) => {
         const cover = byStop.get(s.id)?.[0]
-        return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star }
+        return { id: s.id, lat: s.lat, lon: s.lon, color: stopColor.get(s.id) ?? color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star }
       }),
-    [data?.stops, byStop, color],
+    [data?.stops, byStop, color, stopColor],
   )
 
   // Un tratto per ogni coppia di tappe, col percorso stimato se c'è. Durante
   // l'itinerario animato si disegnano solo i tratti già percorsi.
   const legs = useLegs(id, data?.stops)
-  const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1), [legs, color, play])
+  // Ogni tratto prende il colore del giorno in cui si arriva.
+  const lines = useMemo<MapLine[]>(
+    () => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1).map((l) => ({ ...l, color: stopColor.get(l.id) ?? color })),
+    [legs, color, play, stopColor],
+  )
   const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color), [legs, color])
   const warnings = legs.filter((l) => l.warning)
 
@@ -225,6 +242,16 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               </div>
             )}
           </MapView>
+          {days.length > 1 && (
+            // Legenda dei giorni: un tocco porta al giorno nella cronologia.
+            <div className="day-legend">
+              {days.map((d, i) => (
+                <button key={d.day} onClick={() => document.getElementById(`day-${d.day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                  <span className="dot" style={{ background: dayColor.get(d.day) }} />G{i + 1} · {fmtDayShort(d.stops[0].first)}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="meta" style={{ margin: '10px 2px 0' }}>
             {fmtRange(data.stops[0].first, data.stops.at(-1)!.first)} · {plural(data.stops.length, 'tappa', 'tappe')} · {plural(data.photos.length, 'foto', 'foto')}
           </p>
@@ -314,7 +341,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {days.length > 0 && <h2 className="section-title">Le tappe</h2>}
       <div className="timeline">
       {days.map((d, i) => (
-        <section key={d.day}>
+        <section key={d.day} id={`day-${d.day}`} style={{ '--day': dayColor.get(d.day) } as CSSProperties}>
           <div className="day">
             <b>Giorno {i + 1}</b>
             <span>{fmtDayLong(d.stops[0].first)}</span>

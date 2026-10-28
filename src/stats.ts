@@ -1,5 +1,5 @@
 import { stopTitle, type Photo, type Stop } from './db'
-import { dayOf } from './format'
+import { dayOf, daySpan } from './format'
 import { distanceM } from './importPhotos'
 import type { LegInfo } from './legs'
 
@@ -39,7 +39,7 @@ export function tripStats(stops: Stop[], photos: Photo[], legs: LegInfo[]): Trip
 
   const first = stops[0]?.first
   const last = stops.at(-1)?.first
-  const days = first && last ? Math.round((Date.parse(dayOf(last)) - Date.parse(dayOf(first))) / 86_400_000) + 1 : 0
+  const days = first && last ? daySpan(first, last) : 0
 
   const countries = [...new Set(stops.map((s) => s.country).filter((c): c is string => !!c))]
   // Località: l'ultima parte del nome automatico, «Piazza Maggiore, Bologna» → «Bologna».

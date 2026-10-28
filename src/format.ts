@@ -18,11 +18,15 @@ const SHORT_Y = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short
 
 export const fmtDay = (local: string) => DAY.format(asDate(local))
 export const fmtDayLong = (local: string) => DAY_LONG.format(asDate(local))
+/** «24 lug»: per la legenda dei giorni. */
+export const fmtDayShort = (local: string) => SHORT.format(asDate(local))
 export const fmtTime = (local: string) => TIME.format(asDate(local))
 export const fmtDateTime = (local: string) => `${fmtDay(local)} · ${fmtTime(local)}`
 
 /** Giorno di calendario dello scatto, "2026-09-26". */
 export const dayOf = (local: string) => local.slice(0, 10)
+/** Giorni di calendario fra la prima e l'ultima foto, estremi compresi (24–25 luglio = 2). */
+export const daySpan = (first: string, last: string) => Math.round((Date.parse(dayOf(last)) - Date.parse(dayOf(first))) / 86_400_000) + 1
 
 /** «12–28 ago 2026», «28 ago – 3 set 2026», «30 dic 2025 – 4 gen 2026». */
 export function fmtRange(from: string, to: string): string {

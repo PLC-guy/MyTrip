@@ -5,7 +5,7 @@ import { db, newId, TRIP_COLORS, type Photo, type Stop, type Trip, type TripKind
 import { legsToLines } from './legs'
 import { useLegs } from './useLegs'
 import KindPicker from './KindPicker'
-import { fmtRange, plural } from './format'
+import { daySpan, fmtRange, plural } from './format'
 import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
@@ -238,8 +238,8 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
                   <b>{fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
                 </div>
                 <div>
-                  <span className="label soft">Tappe</span>
-                  <b>{r.stops.length}</b>
+                  <span className="label soft">Giorni</span>
+                  <b>{daySpan(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
                 </div>
                 <div>
                   <span className="label soft">Foto</span>
