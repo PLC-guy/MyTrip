@@ -27,6 +27,20 @@ export const WALK_KM = 2
  */
 const ABSURD_RATIO = 5
 const ABSURD_EXTRA_KM = 25
+/** Oltre questo rapporto il giro è assurdo anche se i km in più sono pochi (un sentiero di 1,9 km stimato 25 km). */
+const ABSURD_RATIO_ALWAYS = 8
+/**
+ * Percorso che non parte o non arriva alla tappa. Il servizio «aggancia» ogni
+ * tappa alla strada o al sentiero mappato più vicino: in montagna, dove i
+ * sentieri spesso mancano, l'aggancio finiva a 2–4 km e l'itinerario risultava a
+ * pezzi, con linee lontane dalle tappe (viaggio «Test» in montagna, 28/10/2026).
+ * Aggancio oltre SNAP_MAX_M (o oltre SNAP_MAX_SHARE della linea d'aria, per i
+ * tratti lunghi) = percorso non valido, si disegna la linea dritta.
+ */
+const SNAP_MAX_M = 300
+const SNAP_MAX_SHARE = 0.1
+/** Un percorso vero non è più corto della linea d'aria: se lo è, l'aggancio ha tagliato il tratto. */
+const MIN_ROUTE_SHARE = 0.7
 /** Margine sul tempo: in auto servono X minuti, tra le foto ne sono passati meno di X − margine. */
 const TIME_MARGIN_MIN = 20
 /** Ore di guida plausibili in 24 ore. */
@@ -124,12 +138,25 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
     }
   }
 
-  const absurd = (r.km ?? 0) > straightKm * ABSURD_RATIO && (r.km ?? 0) - straightKm > ABSURD_EXTRA_KM
+  // Percorso agganciato lontano dalle tappe, o più corto della linea d'aria:
+  // non descrive il tratto. Linea dritta, senza avviso: un sentiero non mappato
+  // è normale, e la tappa resta collegata. ⚠️ L'itinerario deve essere sempre
+  // completo e in ordine: meglio una linea dritta che un pezzo staccato.
+  const snapMax = Math.max(SNAP_MAX_M, straightKm * 1000 * SNAP_MAX_SHARE)
+  const [first, last] = [r.coords[0], r.coords[r.coords.length - 1]]
+  const snapped = distanceM(from.lat, from.lon, first[0], first[1]) > snapMax || distanceM(to.lat, to.lon, last[0], last[1]) > snapMax
+  if (snapped || (r.km ?? 0) < straightKm * MIN_ROUTE_SHARE) return base
+
+  const ratio = (r.km ?? 0) / Math.max(straightKm, 0.001)
+  const absurd = ratio > ABSURD_RATIO_ALWAYS || (ratio > ABSURD_RATIO && (r.km ?? 0) - straightKm > ABSURD_EXTRA_KM)
   // Barca scelta a mano ma nessun traghetto sul percorso: la rotta vera non la conosciamo.
   if (mode === 'boat' && !r.ferry) return base
   if (absurd) return { ...base, warning: inferred ? `Il percorso ${what} stimato è un giro improbabile: indica il mezzo` : undefined }
 
-  const info: LegInfo = { ...base, km: r.km ?? straightKm, minutes: r.minutes, straight: !!to.straight, points: to.straight ? base.points : r.coords }
+  // Il percorso parte e arriva sempre nel punto esatto delle tappe (l'aggancio
+  // alla strada lascerebbe qualche metro di vuoto attorno ai pallini).
+  const route: [number, number][] = [[from.lat, from.lon], ...r.coords, [to.lat, to.lon]]
+  const info: LegInfo = { ...base, km: r.km ?? straightKm, minutes: r.minutes, straight: !!to.straight, points: to.straight ? base.points : route }
   // Un traghetto trovato dal percorso dice più dell'auto dedotta.
   if (inferred && r.ferry && mode === 'car') Object.assign(info, { icon: '⛴️', label: 'Traghetto' })
 

@@ -202,7 +202,8 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
         type: 'line',
         source: 'route',
         filter: ['==', ['get', 'straight'], true],
-        paint: { ...paint, 'line-width': 2, 'line-opacity': 0.55, 'line-dasharray': [2, 2.5] },
+        // Ben visibile anche lei: in montagna può essere metà dell'itinerario (28/10/2026).
+        paint: { ...paint, 'line-width': 2.5, 'line-opacity': 0.85, 'line-dasharray': [2, 2] },
       })
       m.addLayer({ id: 'route-flight', type: 'line', source: 'route', filter: ['==', ['get', 'flight'], true], paint: { ...paint, 'line-width': 2, 'line-dasharray': [4, 3] } })
       m.addLayer({

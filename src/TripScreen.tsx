@@ -514,19 +514,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                 </p>
               )}
               {panel.report.rejected.length > 0 && (
-                <>
-                  <p className="small" style={{ marginTop: 12 }}>
-                    Entrano solo foto con data e posizione nei metadati. Quelle scattate da «Scatta foto», scelte da «File» o arrivate da altre app spesso non le hanno.
-                  </p>
-                  <div className="list">
-                    {panel.report.rejected.slice(0, 30).map((r, i) => (
-                      <div key={i}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
-                        <span className="k">{r.reason}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
+                // Niente elenco dei file scartati: iOS li chiama con codici
+                // (lettere e numeri) da cui non si risale alla foto (richiesta
+                // dell'utente, 28/10/2026).
+                <p className="small" style={{ marginTop: 12 }}>
+                  Entrano solo foto con data e posizione nei metadati. Le foto senza queste informazioni vengono scartate.
+                </p>
               )}
               <div className="stack">
                 <button className="btn" onClick={() => setPanel({ kind: 'none' })}>Fatto</button>
