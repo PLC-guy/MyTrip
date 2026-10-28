@@ -5,6 +5,23 @@ const CLOSE_PX = 110
 /** …oppure una spinta veloce verso il basso, in pixel al millisecondo. */
 const CLOSE_SPEED = 0.6
 
+/**
+ * Pagina ferma sotto i fogli aperti: un contatore, non «salva e ripristina».
+ * ⚠️ Prima ogni foglio salvava il valore trovato e lo rimetteva alla chiusura:
+ * con due fogli uno sopra l'altro (tappa + locali) chiusi insieme, il genitore
+ * si chiude per primo e il figlio rimetteva «hidden». La pagina restava bloccata
+ * su e giù finché non si chiudeva l'app (visto due volte sull'iPhone, 28/10/2026).
+ */
+let openSheets = 0
+function lockPage() {
+  openSheets++
+  document.body.style.overflow = 'hidden'
+}
+function unlockPage() {
+  openSheets = Math.max(0, openSheets - 1)
+  if (openSheets === 0) document.body.style.overflow = ''
+}
+
 /** Foglio che sale dal basso. Si chiude toccando fuori o trascinandolo in basso, salvo `locked`. */
 export default function Sheet({ children, onClose, locked }: { children: ReactNode; onClose: () => void; locked?: boolean }) {
   const backdrop = useRef<HTMLDivElement>(null)
@@ -17,11 +34,8 @@ export default function Sheet({ children, onClose, locked }: { children: ReactNo
   })
 
   useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
+    lockPage()
+    return unlockPage
   }, [])
 
   /**
