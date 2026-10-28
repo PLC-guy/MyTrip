@@ -77,6 +77,22 @@ export interface Stop {
   geoV?: number
   note?: string
   star?: boolean
+  /** «Ho mangiato qui»: il locale (vedi places.ts). Facoltativo anche negli export. */
+  meal?: Meal
+}
+
+/** Il locale dove si è mangiato, scelto fra quelli vicini di OpenStreetMap o scritto a mano. */
+export interface Meal {
+  name: string
+  /** Tipo in italiano: «Ristorante», «Pizzeria», «Bar»… */
+  kind?: string
+  /** Voto da 1 a 5. */
+  rating?: number
+  /** Posizione del locale (da OpenStreetMap), se diversa da quella della tappa. */
+  lat?: number
+  lon?: number
+  /** La foto del piatto da cui è partita la ricerca: è la foto del locale negli elenchi. */
+  photoId?: string
 }
 
 export interface Photo {
@@ -221,6 +237,7 @@ export async function mergeStops(intoId: string, fromId: string): Promise<void> 
       ...summary,
       note,
       star: into.star || from.star || undefined,
+      meal: into.meal ?? from.meal,
       name: into.name ?? from.name,
       ...(startsEarlier ? { transport: from.transport, weather: undefined, weatherDone: undefined } : {}),
     })

@@ -142,6 +142,9 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
           <button onClick={() => go({ name: 'stars' })}>
             <IconStar /> Speciali
           </button>
+          <button onClick={() => go({ name: 'meals' })}>
+            <span aria-hidden="true">🍽️</span> Locali
+          </button>
           <button onClick={() => go({ name: 'countries' })}>
             <IconGlobe /> Paesi
           </button>

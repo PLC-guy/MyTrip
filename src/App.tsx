@@ -3,6 +3,7 @@ import HomeScreen from './HomeScreen'
 import TripScreen from './TripScreen'
 import SettingsScreen from './SettingsScreen'
 import StarsScreen from './StarsScreen'
+import MealsScreen from './MealsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
@@ -21,6 +22,7 @@ export type Route =
   | { name: 'trip'; id: string; stop?: string }
   | { name: 'settings'; page?: SettingsPage }
   | { name: 'stars' }
+  | { name: 'meals' }
   | { name: 'search' }
   | { name: 'countries' }
 
@@ -31,7 +33,7 @@ const LOOP_BROKEN = reloadLoopDetected()
  * Sul telefono, aperta dal browser e non dalla Home: solo la guida
  * all'installazione (il perché è in `install.ts`). Sul computer l'app si usa
  * anche nel browser. In sviluppo la guida si vede con `?guida=ios` (o
- * `android`, `app`); `null` = niente guida.
+ * `ios18`, `android`, `app`); `null` = niente guida.
  */
 const ENV = readEnvironment()
 const GUIDE = import.meta.env.DEV ? new URLSearchParams(location.search).get('guida') : !ENV.installed && ENV.platform !== 'desktop' ? '' : null
@@ -50,6 +52,7 @@ function readRoute(): Route {
   if (h === '#/impostazioni/aspetto') return { name: 'settings', page: 'aspetto' }
   if (h === '#/impostazioni/backup') return { name: 'settings', page: 'backup' }
   if (h === '#/speciali') return { name: 'stars' }
+  if (h === '#/mangiato') return { name: 'meals' }
   if (h === '#/cerca') return { name: 'search' }
   if (h === '#/paesi') return { name: 'countries' }
   return { name: 'home' }
@@ -59,6 +62,7 @@ function writeRoute(r: Route): string {
   if (r.name === 'trip') return `#/viaggio/${encodeURIComponent(r.id)}${r.stop ? '/' + encodeURIComponent(r.stop) : ''}`
   if (r.name === 'settings') return r.page ? `#/impostazioni/${r.page}` : '#/impostazioni'
   if (r.name === 'stars') return '#/speciali'
+  if (r.name === 'meals') return '#/mangiato'
   if (r.name === 'search') return '#/cerca'
   if (r.name === 'countries') return '#/paesi'
   return '#/'
@@ -112,6 +116,7 @@ export default function App() {
         {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
         {route.name === 'settings' && <SettingsScreen page={route.page} go={go} />}
         {route.name === 'stars' && <StarsScreen go={go} />}
+        {route.name === 'meals' && <MealsScreen go={go} />}
         {route.name === 'search' && <SearchScreen go={go} />}
         {route.name === 'countries' && <CountriesScreen go={go} />}
       </ErrorBoundary>

@@ -108,7 +108,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       (data?.stops ?? []).filter(showDay).map((s) => {
         const cover = byStop.get(s.id)?.[0]
         const label = days.length > 1 ? String(dayNum.get(dayOf(s.first))) : undefined
-        return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star, label }
+        return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star, label, meal: !!s.meal }
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data?.stops, byStop, color, days, dayNum, dayFilter],
@@ -389,6 +389,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                       {s.star && <span className="star"> ★</span>}
                     </b>
                   </span>
+                  {s.meal && (
+                    <span className="note meal-line">
+                      🍽️ {s.meal.name}
+                      {s.meal.rating ? <span className="meal-stars"> {'★'.repeat(s.meal.rating)}</span> : null}
+                    </span>
+                  )}
                   {s.note && <span className="note">{s.note}</span>}
                   <span className="strip">
                     {photos.slice(0, 6).map((p) => (

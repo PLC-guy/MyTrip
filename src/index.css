@@ -353,7 +353,12 @@ textarea.field { min-height: 84px; resize: vertical; }
    (393pt di larghezza, 27/10/2026). Il pulsante «indietro» a sinistra ha
    larghezza fissa, quindi la distanza dal bordo sinistro non cambia col telefono. */
 .install-arrow { position: fixed; width: 24px; height: 48px; color: var(--saff); pointer-events: none; }
-.install-arrow.down { left: 102px; bottom: calc(env(safe-area-inset-bottom) + 12px); animation: install-down 1.4s ease-in-out infinite; }
+.install-arrow.down { bottom: calc(env(safe-area-inset-bottom) + 12px); animation: install-down 1.4s ease-in-out infinite; }
+.install-arrow.down.menu { left: 102px; }
+/* ⋯ in basso a destra (altra disposizione di iOS 26): centro a ~56px dal bordo destro, misura di MyBsns. */
+.install-arrow.down.more { right: 44px; animation-delay: 0.7s; }
+/* iOS fino al 18: Condividi al centro della barra. */
+.install-arrow.down.share { left: calc(50% - 12px); }
 .install-arrow.up { right: 12px; top: 8px; animation: install-up 1.4s ease-in-out infinite; }
 @keyframes install-down { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(8px); } }
 @keyframes install-up { 0%, 100% { transform: rotate(180deg) translateY(0); } 50% { transform: rotate(180deg) translateY(8px); } }
@@ -402,3 +407,22 @@ textarea.field { min-height: 84px; resize: vertical; }
 .segmented.day-filter { margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
 .segmented.day-filter::-webkit-scrollbar { display: none; }
 .segmented.day-filter button { flex: none; min-width: 52px; }
+
+/* ---- «Ho mangiato qui» (StopSheet, MealSheet). */
+.shot .cap .meal-icon { font-size: 1rem; line-height: 1; filter: grayscale(1); opacity: 0.6; }
+.shot .cap .meal-icon.on { filter: none; opacity: 1; }
+.meal-hint { margin: 12px 0 0; }
+.meal-box { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius); background: var(--card); }
+.meal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.meal-head > span { display: grid; gap: 2px; min-width: 0; }
+.meal-head b { font: var(--display-weight) 1.15rem/1.2 var(--display); }
+.meal-head .k { font-size: 0.86rem; color: var(--muted); }
+.rating { display: flex; align-items: center; gap: 2px; margin-top: 8px; }
+.rating > button[role='radio'] { border: 0; background: none; padding: 2px 3px; font-size: 1.5rem; line-height: 1; color: color-mix(in srgb, var(--ink) 20%, transparent); }
+.rating > button.on { color: var(--saff); }
+.small-link { border: 0; background: none; padding: 4px 0; color: var(--accent); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
+.list > .meal-pick { width: 100%; border: 0; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; text-align: left; color: var(--ink); }
+.list > .meal-pick.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.stop .meal-line { color: var(--ink); font-weight: 700; }
+.meal-stars { color: var(--saff); letter-spacing: 1px; }
+.meal-country { margin-bottom: 12px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 36px; }

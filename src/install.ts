@@ -47,6 +47,18 @@ function detectInApp(platform: Platform): boolean {
   return false
 }
 
+/**
+ * Versione principale di Safari («Version/26.0» → 26), che su iOS segue quella
+ * del sistema. ⚠️ Dice la versione, NON la disposizione della barra: su iOS 26
+ * Safari ha più disposizioni (Impostazioni › App › Safari), con il menu ≡ accanto
+ * all'indirizzo o ⋯ in basso a destra, e la pagina non può sapere quale.
+ * Visto il 28/10/2026 su due iPhone diversi.
+ */
+export function safariVersion(): number | undefined {
+  const m = /Version\/(\d+)/.exec(navigator.userAgent)
+  return m ? Number(m[1]) : undefined
+}
+
 export function readEnvironment(): Environment {
   const platform = detectPlatform()
   return { installed: isStandalone(), platform, inApp: detectInApp(platform) }

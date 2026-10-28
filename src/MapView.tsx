@@ -15,6 +15,8 @@ export interface MapPin {
   star?: boolean
   /** Numero del giorno, scritto nel pallino (viaggi di più giorni). */
   label?: string
+  /** Ci si è mangiato: 🍽️ sulla miniatura. */
+  meal?: boolean
 }
 
 export interface MapLine {
@@ -90,7 +92,7 @@ const PIN = 44 // lato della miniatura, in punti
 const TIP = 7 // altezza della punta
 const RATIO = 2 // densità del disegno (schermi retina)
 
-const pinImageId = (p: MapPin) => `p|${p.img}|${p.color}|${p.star ? 1 : 0}|${p.count ?? 1}`
+const pinImageId = (p: MapPin) => `p|${p.img}|${p.color}|${p.star ? 1 : 0}|${p.count ?? 1}|${p.meal ? 1 : 0}`
 const dotImageId = (p: MapPin) => `d|${p.color}|${p.label}`
 /** Diametro del pallino col numero del giorno, in punti. */
 const DOT = 18
@@ -152,6 +154,17 @@ async function drawPin(p: MapPin): Promise<ImageData> {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText('★', PIN - 7, 7.5)
+  }
+  if (p.meal) {
+    // In alto a sinistra: la stellina sta a destra, il numero di foto in basso.
+    ctx.fillStyle = cssColor('--bg', '#F5F0E6')
+    ctx.beginPath()
+    ctx.arc(8, 8, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.font = '10px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🍽️', 8, 8.5)
   }
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }

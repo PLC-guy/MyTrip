@@ -4,6 +4,7 @@ import { fmtDateTime, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
 import { IconMap, IconScissors, IconShare, IconTrash } from './icons'
 import Sheet from './Sheet'
+import MealSheet from './MealSheet'
 import { mapsUrl, shareStop } from './share'
 import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
@@ -21,7 +22,7 @@ interface Props {
   onOpen: (stopId: string) => void
 }
 
-type Ask = { kind: 'delete'; photo: Photo } | { kind: 'split'; photo: Photo } | { kind: 'merge'; other: Stop; into: 'prev' | 'next' }
+type Ask = { kind: 'delete'; photo: Photo } | { kind: 'split'; photo: Photo } | { kind: 'merge'; other: Stop; into: 'prev' | 'next' } | { kind: 'meal'; photo?: Photo }
 
 export default function StopSheet({ stop, photos, color, prev, next, onClose, onOpen }: Props) {
   const [note, setNote] = useState(stop.note ?? '')
@@ -102,6 +103,14 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
                 {p.alt != null ? ` · ${p.alt} m` : ''}
               </span>
               <span>
+                {/* La foto del piatto: da qui si sceglie il locale, cercando attorno a questa foto. */}
+                <button
+                  className={`meal-icon${stop.meal?.photoId === p.id ? ' on' : ''}`}
+                  aria-label="Ho mangiato qui: scegli il locale"
+                  onClick={() => setAsk({ kind: 'meal', photo: p })}
+                >
+                  🍽️
+                </button>
                 {i > 0 && (
                   <button aria-label="Dividi la tappa da questa foto" onClick={() => setAsk({ kind: 'split', photo: p })}>
                     <IconScissors />
@@ -115,6 +124,39 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
           </figure>
         ))}
       </div>
+
+      {/* «Ho mangiato qui»: il locale, con un voto. */}
+      {stop.meal ? (
+        <div className="meal-box">
+          <div className="meal-head">
+            <span>
+              <b>🍽️ {stop.meal.name}</b>
+              {stop.meal.kind && <span className="k">{stop.meal.kind}</span>}
+            </span>
+            <button className="small-link" onClick={() => setAsk({ kind: 'meal', photo: photos.find((p) => p.id === stop.meal?.photoId) })}>Cambia</button>
+          </div>
+          <div className="rating" role="radiogroup" aria-label="Voto">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                role="radio"
+                aria-checked={stop.meal?.rating === n}
+                aria-label={`${n} su 5`}
+                className={(stop.meal?.rating ?? 0) >= n ? 'on' : ''}
+                // Toccare il voto già dato lo toglie.
+                onClick={() => void db.stops.update(stop.id, { meal: { ...stop.meal!, rating: stop.meal?.rating === n ? undefined : n } })}
+              >
+                ★
+              </button>
+            ))}
+            <button className="small-link" style={{ marginLeft: 'auto' }} onClick={() => void db.stops.update(stop.id, { meal: undefined })}>
+              Togli
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="small meal-hint">Hai mangiato qui? Tocca 🍽️ sotto la foto del piatto per scegliere il locale.</p>
+      )}
 
       <div className="stack">
         <textarea className="field" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
@@ -151,6 +193,8 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
           {plural(photos.length, 'foto', 'foto')} · {stop.lat.toFixed(5)}, {stop.lon.toFixed(5)}
         </p>
       </div>
+
+      {ask?.kind === 'meal' && <MealSheet stop={stop} photo={ask.photo} onClose={() => setAsk(undefined)} />}
 
       {ask?.kind === 'delete' && (
         <Sheet onClose={() => setAsk(undefined)}>

@@ -21,7 +21,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
     for (const s of all.stops) {
       const trip = tripById.get(s.tripId)
       if (!trip) continue
-      const inName = norm(stopTitle(s)).includes(needle) || norm(s.place ?? '').includes(needle) || norm(s.country ?? '').includes(needle)
+      const inName = norm(stopTitle(s)).includes(needle) || norm(s.place ?? '').includes(needle) || norm(s.country ?? '').includes(needle) || norm(s.meal?.name ?? '').includes(needle)
       const inNote = !!s.note && norm(s.note).includes(needle)
       if (inName || inNote) stops.push({ stop: s, trip, why: inNote && !inName ? s.note : undefined })
     }
@@ -40,7 +40,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
         </button>
         <h1>Cerca</h1>
       </div>
-      <input className="field" type="search" autoFocus placeholder="Luogo, paese, nota, diario…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="field" type="search" autoFocus placeholder="Luogo, locale, paese, nota, diario…" value={q} onChange={(e) => setQ(e.target.value)} />
 
       {empty && <p className="small" style={{ marginTop: 16 }}>Nessun risultato per «{q.trim()}».</p>}
 

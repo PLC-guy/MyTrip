@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconAddToHome, IconChevronDown, IconMenuLines, IconShare } from './icons'
-import { useEnvironment, useInstallPrompt, type Platform } from './install'
+import { safariVersion, useEnvironment, useInstallPrompt, type Platform } from './install'
 
 /**
  * GUIDA ALL'INSTALLAZIONE
@@ -27,10 +27,14 @@ function useActiveStep(count: number): number {
   return active
 }
 
-/** Freccia ancorata allo schermo: in basso sul menu ≡ di Safari su iPhone, in alto a destra altrove. */
-function Arrow({ dir }: { dir: 'down' | 'up' }) {
+/**
+ * Freccia ancorata allo schermo, sul pulsante da toccare: `menu` (≡ accanto
+ * all'indirizzo), `more` (⋯ in basso a destra), `share` (Condividi al centro,
+ * iOS fino al 18), `up` (menu del browser in alto a destra, Android).
+ */
+function Arrow({ at }: { at: 'menu' | 'more' | 'share' | 'up' }) {
   return (
-    <svg className={`install-arrow ${dir}`} viewBox="0 0 24 48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className={`install-arrow ${at === 'up' ? 'up' : `down ${at}`}`} viewBox="0 0 24 48" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 4v40" />
       <path d="M4 36l8 8 8-8" />
     </svg>
@@ -52,7 +56,7 @@ function Steps({ steps }: { steps: ReactNode[] }) {
 }
 
 /** Le istruzioni cambiano col dispositivo: indicare un pulsante che lì non c'è è peggio di niente. */
-function Instructions({ platform, inApp, install }: { platform: Platform; inApp: boolean; install: (() => void) | null }) {
+function Instructions({ platform, inApp, install, oldIos }: { platform: Platform; inApp: boolean; install: (() => void) | null; oldIos: boolean }) {
   if (inApp) {
     return (
       <>
@@ -68,25 +72,46 @@ function Instructions({ platform, inApp, install }: { platform: Platform; inApp:
     )
   }
 
+  if (platform === 'ios' && oldIos) {
+    // iOS fino al 18: Condividi è in vista, al centro della barra in basso.
+    return (
+      <>
+        <p className="install-lead">Pochi tocchi e MyTrip diventa un'app vera, con la sua icona sulla Home.</p>
+        <Steps
+          steps={[
+            <>Tocca <strong>Condividi</strong> <IconShare />, al centro della barra in basso.</>,
+            // ⚠️ Il testo esatto di iOS: in un elenco lungo si cerca la parola.
+            <>Scorri e scegli <strong>«Aggiungi alla schermata Home»</strong> <IconAddToHome />.</>,
+            <>Chiudi Safari e apri MyTrip <strong>dall'icona sulla Home</strong>.</>,
+          ]}
+        />
+        <Arrow at="share" />
+      </>
+    )
+  }
+
   if (platform === 'ios') {
     return (
       <>
         <p className="install-lead">Pochi tocchi e MyTrip diventa un'app vera, con la sua icona sulla Home.</p>
         <Steps
           steps={[
-            // ⚠️ Safari di iOS 26 (screenshot dell'utente, 27/10/2026): niente più
-            // tre puntini. Il menu è l'icona ≡ a sinistra dell'indirizzo, nella
-            // barra in basso; Condividi sta lì dentro, e «Aggiungi alla schermata
-            // Home» è nascosta sotto «Visualizza altro» del foglio di condivisione.
-            <>Tocca <IconMenuLines /> a sinistra dell'<strong>indirizzo</strong>, in basso.</>,
+            // ⚠️ Safari di iOS 26 ha più disposizioni della barra, e la pagina non
+            // sa quale: sul telefono dell'utente il menu è ≡ a sinistra
+            // dell'indirizzo (screenshot del 27/10/2026), su un altro iPhone ⋯ in
+            // basso a destra (28/10/2026). Si indicano entrambi, con due frecce.
+            <>
+              Tocca <strong>⋯</strong> in basso a destra, oppure <IconMenuLines /> accanto all'<strong>indirizzo</strong>.
+            </>,
             <>Scegli <strong>Condividi</strong> <IconShare />.</>,
-            <>Tocca <strong>«Visualizza altro»</strong> <IconChevronDown />.</>,
+            <>Se non la vedi, tocca <strong>«Visualizza altro»</strong> <IconChevronDown />.</>,
             // ⚠️ Il testo esatto di iOS: in un elenco lungo si cerca la parola.
             <>Scegli <strong>«Aggiungi alla schermata Home»</strong> <IconAddToHome />.</>,
             <>Chiudi Safari e apri MyTrip <strong>dall'icona sulla Home</strong>.</>,
           ]}
         />
-        <Arrow dir="down" />
+        <Arrow at="menu" />
+        <Arrow at="more" />
       </>
     )
   }
@@ -108,17 +133,20 @@ function Instructions({ platform, inApp, install }: { platform: Platform; inApp:
               <>Apri MyTrip <strong>dall'icona sulla Home</strong>.</>,
             ]}
           />
-          <Arrow dir="up" />
+          <Arrow at="up" />
         </>
       )}
     </>
   )
 }
 
-/** `force`: solo in sviluppo, per vedere la guida di un dispositivo ('ios', 'android', 'app'). */
+/** `force`: solo in sviluppo, per vedere la guida di un dispositivo ('ios', 'ios18', 'android', 'app'). */
 export default function InstallGate({ force }: { force?: string }) {
   const env = useEnvironment()
-  const platform: Platform = force === 'ios' || force === 'android' ? force : env.platform
+  const platform: Platform = force === 'ios' || force === 'ios18' ? 'ios' : force === 'android' ? 'android' : env.platform
+  // Versione sconosciuta (altri browser): la guida di iOS 26, la più recente.
+  const version = force === 'ios18' ? 18 : force === 'ios' ? 26 : safariVersion()
+  const oldIos = version !== undefined && version < 26
   const inApp = force === 'app' || (!force && env.inApp)
   const install = useInstallPrompt()
   return (
@@ -127,7 +155,7 @@ export default function InstallGate({ force }: { force?: string }) {
         <img className="install-icon" src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
         <span className="label">Prima di partire</span>
         <h1>Installa MyTrip sulla Home</h1>
-        <Instructions platform={platform} inApp={inApp} install={install} />
+        <Instructions platform={platform} inApp={inApp} install={install} oldIos={oldIos} />
         <p className="small">I viaggi restano sul tuo telefono: nessun account, nessun server.</p>
       </div>
     </div>
