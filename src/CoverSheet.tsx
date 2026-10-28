@@ -1,30 +1,23 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, type Photo, type Trip } from './db'
+import { db, newId, type Trip } from './db'
 import { IconPhotos } from './icons'
 import Sheet from './Sheet'
 import { makeThumb } from './thumb'
 import { forgetThumbs, thumbUrl } from './thumbUrl'
 
 /**
- * Copertina del viaggio: una foto qualsiasi fra quelle dell'app (anche di altri
- * viaggi), oppure un'immagine caricata apposta. Quest'ultima non passa dai
- * metadati e non diventa una tappa: può essere anche una foto senza GPS.
+ * Copertina del viaggio: una foto DI QUESTO viaggio, oppure un'immagine
+ * caricata apposta dalla galleria. Quest'ultima non passa dai metadati e non
+ * diventa una tappa: può essere anche una foto senza GPS.
+ * ⚠️ Niente foto degli altri viaggi (fino alla 0.10.0 c'erano; tolte su
+ * richiesta dell'utente, 28/10/2026).
  */
 export default function CoverSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [error, setError] = useState<string>()
   const [working, setWorking] = useState(false)
 
-  const groups = useLiveQuery(async () => {
-    const trips = await db.trips.toArray()
-    const out: { trip: Trip; photos: Photo[] }[] = []
-    // Prima il viaggio di cui si sta scegliendo la copertina, poi gli altri.
-    for (const t of trips.sort((a, b) => (a.id === trip.id ? -1 : b.id === trip.id ? 1 : b.createdAt - a.createdAt))) {
-      const photos = await db.photos.where('tripId').equals(t.id).sortBy('time')
-      if (photos.length) out.push({ trip: t, photos })
-    }
-    return out
-  }, [trip.id])
+  const photos = useLiveQuery(() => db.photos.where('tripId').equals(trip.id).sortBy('time'), [trip.id])
 
   const dropOldImage = () => {
     if (trip.coverImageId) forgetThumbs([trip.coverImageId])
@@ -57,10 +50,10 @@ export default function CoverSheet({ trip, onClose }: { trip: Trip; onClose: () 
   return (
     <Sheet onClose={onClose} locked={working}>
       <h2>Copertina</h2>
-      <p className="small">Scegli una foto fra quelle caricate, oppure caricane una solo per la copertina: non verrà aggiunta alle tappe.</p>
+      <p className="small">Scegli una foto di questo viaggio, oppure caricane una dalla galleria solo per la copertina: non verrà aggiunta alle tappe.</p>
       <div className="stack">
         <label className="btn" aria-disabled={working}>
-          <IconPhotos /> {working ? 'Preparo la copertina…' : 'Carica una foto per la copertina'}
+          <IconPhotos /> {working ? 'Preparo la copertina…' : 'Scegli dalla galleria'}
           <input className="hidden-input" type="file" accept="image/*" disabled={working} onChange={(e) => void upload(e.target.files?.[0])} />
         </label>
         <button className="btn ghost" onClick={() => void pick(undefined)} disabled={!current}>
@@ -78,21 +71,18 @@ export default function CoverSheet({ trip, onClose }: { trip: Trip; onClose: () 
         </>
       )}
 
-      {groups?.map((g) => (
-        <section key={g.trip.id}>
-          <h3 className="section-title">
-            <span className="dot" style={{ background: g.trip.color }} />
-            {g.trip.name}
-          </h3>
+      {photos && photos.length > 0 && (
+        <>
+          <h3 className="section-title">Foto del viaggio</h3>
           <div className="cover-grid">
-            {g.photos.map((p) => (
+            {photos.map((p) => (
               <button key={p.id} onClick={() => void pick(p.id)} aria-label={`Usa ${p.name} come copertina`}>
                 <img className={current === p.id ? 'on' : ''} src={thumbUrl(p)} alt="" loading="lazy" />
               </button>
             ))}
           </div>
-        </section>
-      ))}
+        </>
+      )}
     </Sheet>
   )
 }

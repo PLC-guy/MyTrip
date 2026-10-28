@@ -13,6 +13,8 @@ export interface MapPin {
   img?: string
   count?: number
   star?: boolean
+  /** Numero del giorno, scritto nel pallino (viaggi di più giorni). */
+  label?: string
 }
 
 export interface MapLine {
@@ -89,6 +91,9 @@ const TIP = 7 // altezza della punta
 const RATIO = 2 // densità del disegno (schermi retina)
 
 const pinImageId = (p: MapPin) => `p|${p.img}|${p.color}|${p.star ? 1 : 0}|${p.count ?? 1}`
+const dotImageId = (p: MapPin) => `d|${p.color}|${p.label}`
+/** Diametro del pallino col numero del giorno, in punti. */
+const DOT = 18
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
@@ -210,12 +215,23 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
         id: 'pin-dots',
         type: 'circle',
         source: 'pins',
+        filter: ['!', ['has', 'label']],
         paint: {
           'circle-radius': ['case', ['get', 'thumb'], 4.5, 6.5],
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
         },
+      })
+      // Pallino col numero del giorno: un'immagine disegnata come le miniature
+      // (niente caratteri della mappa, che senza rete mancherebbero). Sempre
+      // visibile, come il pallino semplice.
+      m.addLayer({
+        id: 'pin-day',
+        type: 'symbol',
+        source: 'pins',
+        filter: ['has', 'dot'],
+        layout: { 'icon-image': ['get', 'dot'], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       })
       m.addLayer({
         id: 'pin-thumbs',
@@ -225,7 +241,8 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
         layout: {
           'icon-image': ['get', 'icon'],
           'icon-anchor': 'bottom',
-          'icon-offset': [0, -3],
+          // Col pallino numerato (più grande) la punta resta sopra il numero.
+          'icon-offset': ['case', ['has', 'label'], ['literal', [0, -7]], ['literal', [0, -3]]],
           'icon-padding': 3,
           'symbol-sort-key': ['get', 'rank'],
           'icon-size': 1,
@@ -243,7 +260,7 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
           [x - 14, y - 14],
           [x + 14, y + 14],
         ],
-        { layers: ['pin-thumbs', 'pin-dots'] },
+        { layers: ['pin-thumbs', 'pin-day', 'pin-dots'] },
       )[0]
       const id = hit?.properties?.id as string | undefined
       if (id) onPinRef.current?.(id)
@@ -277,6 +294,9 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
     const refresh = () => {
       if (cancelled) return
       ;(m.getSource('pins') as maplibregl.GeoJSONSource).setData(pinsGeoJson(m, pinsRef.current, focusRef.current))
+    }
+    for (const p of pins) {
+      if (p.label && !m.hasImage(dotImageId(p))) m.addImage(dotImageId(p), drawDot(p), { pixelRatio: RATIO })
     }
     refresh()
     for (const p of pins) {
@@ -339,6 +359,28 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
   )
 }
 
+/** Pallino del colore del viaggio con il numero del giorno in bianco. */
+function drawDot(p: MapPin): ImageData {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = (DOT + 4) * RATIO
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(RATIO, RATIO)
+  const c = (DOT + 4) / 2
+  ctx.beginPath()
+  ctx.arc(c, c, DOT / 2, 0, Math.PI * 2)
+  ctx.fillStyle = p.color
+  ctx.fill()
+  ctx.lineWidth = 2
+  ctx.strokeStyle = '#ffffff'
+  ctx.stroke()
+  ctx.fillStyle = '#ffffff'
+  ctx.font = `700 ${(p.label ?? '').length > 1 ? 9 : 10}px system-ui, -apple-system, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(p.label ?? '', c, c + 0.5)
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
+
 /** Punti per la mappa; `icon` solo se la miniatura è già pronta. */
 function pinsGeoJson(m: maplibregl.Map, pins: MapPin[], focusId?: string): FeatureCollection {
   return {
@@ -349,7 +391,7 @@ function pinsGeoJson(m: maplibregl.Map, pins: MapPin[], focusId?: string): Featu
       const rank = p.id === focusId ? 0 : (p.star ? 1000 : 2000) - Math.min(p.count ?? 1, 999)
       return {
         type: 'Feature',
-        properties: { id: p.id, color: p.color, thumb: !!p.img, rank, ...(icon && m.hasImage(icon) ? { icon } : {}) },
+        properties: { id: p.id, color: p.color, thumb: !!p.img, rank, ...(icon && m.hasImage(icon) ? { icon } : {}), ...(p.label ? { label: p.label, dot: dotImageId(p) } : {}) },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       }
     }),

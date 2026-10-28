@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip, stopTitle, type Photo, type Stop, type TripKind } from './db'
 import KindPicker from './KindPicker'
@@ -33,16 +33,6 @@ type Panel =
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
   | { kind: 'transport'; stopId: string }
-
-/**
- * Un colore per giorno, sulla mappa e nella cronologia: si capisce a colpo
- * d'occhio quali tappe sono del primo giorno, quali del secondo… (richiesta
- * dell'utente, 28/10/2026). Toni della palette dei viaggi, in un ordine che
- * alterna caldi e freddi perché due giorni vicini non si somiglino. Oltre il
- * settimo giorno i colori ricominciano: la legenda sotto la mappa li distingue.
- * Con un giorno solo resta il colore del viaggio.
- */
-const DAY_COLORS = ['#2F6B4F', '#C98A1B', '#1F4E8C', '#A3432A', '#2F8C86', '#6B4F8C', '#8C5A2F']
 
 /** Quanto resta su ogni tappa l'itinerario animato. */
 const PLAY_MS = 2600
@@ -104,27 +94,38 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }, [data?.stops])
 
   const color = data?.trip?.color ?? '#888'
-  /** Colore di ogni giorno (chiave "AAAA-MM-GG") e di ogni tappa. */
-  const dayColor = useMemo(() => new Map(days.map((d, i) => [d.day, days.length > 1 ? DAY_COLORS[i % DAY_COLORS.length] : color])), [days, color])
-  const stopColor = useMemo(() => new Map((data?.stops ?? []).map((s) => [s.id, dayColor.get(dayOf(s.first)) ?? color])), [data?.stops, dayColor, color])
+  /**
+   * GIORNI SULLA MAPPA (richiesta dell'utente, 28/10/2026): nei viaggi di più
+   * giorni ogni pallino porta il numero del suo giorno, e sotto la mappa si può
+   * isolare un giorno solo. ⚠️ Niente colori diversi per giorno: provati nella
+   * 0.10.0, non convincevano.
+   */
+  const [dayFilter, setDayFilter] = useState<string | null>(null)
+  const dayNum = useMemo(() => new Map(days.map((d, i) => [d.day, i + 1])), [days])
+  const showDay = (s: Stop) => dayFilter === null || dayOf(s.first) === dayFilter
   const pins = useMemo<MapPin[]>(
     () =>
-      (data?.stops ?? []).map((s) => {
+      (data?.stops ?? []).filter(showDay).map((s) => {
         const cover = byStop.get(s.id)?.[0]
-        return { id: s.id, lat: s.lat, lon: s.lon, color: stopColor.get(s.id) ?? color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star }
+        const label = days.length > 1 ? String(dayNum.get(dayOf(s.first))) : undefined
+        return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star, label }
       }),
-    [data?.stops, byStop, color, stopColor],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data?.stops, byStop, color, days, dayNum, dayFilter],
   )
 
   // Un tratto per ogni coppia di tappe, col percorso stimato se c'è. Durante
   // l'itinerario animato si disegnano solo i tratti già percorsi.
   const legs = useLegs(id, data?.stops)
-  // Ogni tratto prende il colore del giorno in cui si arriva.
-  const lines = useMemo<MapLine[]>(
-    () => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1).map((l) => ({ ...l, color: stopColor.get(l.id) ?? color })),
-    [legs, color, play, stopColor],
-  )
-  const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color), [legs, color])
+  // Con un giorno isolato, solo i tratti fra due tappe di quel giorno.
+  const inDay = useMemo(() => {
+    if (dayFilter === null) return () => true
+    const ids = new Set((data?.stops ?? []).filter((s) => dayOf(s.first) === dayFilter).map((s) => s.id))
+    const prev = new Map((data?.stops ?? []).map((s, i, all) => [s.id, all[i - 1]?.id]))
+    return (l: MapLine) => ids.has(l.id) && ids.has(prev.get(l.id) ?? '')
+  }, [data?.stops, dayFilter])
+  const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1).filter(inDay), [legs, color, play, inDay])
+  const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color).filter(inDay), [legs, color, inDay])
   const warnings = legs.filter((l) => l.warning)
 
   // Percorsi mancanti di questo viaggio, prima degli altri.
@@ -217,13 +218,14 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
 
       {data.stops.length > 0 && (
         <>
-          <MapView tall pins={pins} lines={lines} fitLines={allLines} fitKey={`${id}|${data.stops.length}`} focusId={playing?.id ?? focus} onPin={openAt}>
+          <MapView tall pins={pins} lines={lines} fitLines={allLines} fitKey={`${id}|${data.stops.length}|${dayFilter ?? ''}`} focusId={playing?.id ?? focus} onPin={openAt}>
             {data.stops.length > 1 && (
               <button
                 className="icon-btn map-play"
                 aria-label={playing ? "Ferma l'itinerario" : "Ripercorri l'itinerario"}
                 onClick={() => {
                   setOpenStop(undefined)
+                  setDayFilter(null)
                   setPlay(playing ? null : 0)
                 }}
               >
@@ -243,11 +245,14 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             )}
           </MapView>
           {days.length > 1 && (
-            // Legenda dei giorni: un tocco porta al giorno nella cronologia.
-            <div className="day-legend">
+            // Filtro dei giorni: la mappa mostra tutto o un giorno solo.
+            <div className="segmented day-filter" role="radiogroup" aria-label="Giorni sulla mappa">
+              <button type="button" role="radio" aria-checked={dayFilter === null} className={dayFilter === null ? 'on' : ''} onClick={() => setDayFilter(null)}>
+                Tutti
+              </button>
               {days.map((d, i) => (
-                <button key={d.day} onClick={() => document.getElementById(`day-${d.day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-                  <span className="dot" style={{ background: dayColor.get(d.day) }} />G{i + 1} · {fmtDayShort(d.stops[0].first)}
+                <button key={d.day} type="button" role="radio" aria-checked={dayFilter === d.day} className={dayFilter === d.day ? 'on' : ''} title={fmtDayShort(d.stops[0].first)} onClick={() => { setPlay(null); setDayFilter(d.day) }}>
+                  G{i + 1}
                 </button>
               ))}
             </div>
@@ -341,7 +346,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {days.length > 0 && <h2 className="section-title">Le tappe</h2>}
       <div className="timeline">
       {days.map((d, i) => (
-        <section key={d.day} id={`day-${d.day}`} style={{ '--day': dayColor.get(d.day) } as CSSProperties}>
+        <section key={d.day}>
           <div className="day">
             <b>Giorno {i + 1}</b>
             <span>{fmtDayLong(d.stops[0].first)}</span>
