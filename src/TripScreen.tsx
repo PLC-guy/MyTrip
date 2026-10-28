@@ -26,7 +26,7 @@ type Panel =
   | { kind: 'none' }
   /** Selettore di iOS aperto: dopo «Aggiungi» iOS prepara le foto prima di consegnarle. */
   | { kind: 'picking' }
-  | { kind: 'import'; progress: ImportProgress; report?: ImportReport }
+  | { kind: 'import'; progress: ImportProgress; report?: ImportReport; timing?: { deliverMs?: number; readMs: number } }
   | { kind: 'menu' }
   | { kind: 'cover' }
   | { kind: 'rename'; value: string; type: TripKind }
@@ -39,6 +39,8 @@ const PLAY_MS = 2600
 
 export default function TripScreen({ id, initialStop, go }: { id: string; initialStop?: string; go: (r: Route) => void }) {
   const input = useRef<HTMLInputElement>(null)
+  /** Quando si è aperto il selettore: per sapere quanto ha impiegato iOS a consegnare le foto. */
+  const pickedAt = useRef<number | undefined>(undefined)
   const [panel, setPanel] = useState<Panel>({ kind: 'none' })
   const [openStop, setOpenStop] = useState<string | undefined>(initialStop)
   const [focus, setFocus] = useState<string | undefined>(initialStop)
@@ -132,6 +134,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? [])
     if (input.current) input.current.value = ''
+    // ⚠️ Due tempi separati, mostrati nel riepilogo: quanto iOS ha impiegato a
+    // consegnare le foto (selettore → app) e quanto l'app a leggerle. Servono a
+    // capire sull'iPhone dove si perde tempo (prova del 28/10/2026).
+    const start = performance.now()
+    const deliverMs = pickedAt.current != null ? Date.now() - pickedAt.current : undefined
+    pickedAt.current = undefined
     if (files.length === 0) {
       setPanel({ kind: 'none' })
       return
@@ -142,7 +150,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     const wake = await navigator.wakeLock?.request('screen').catch(() => undefined)
     try {
       const report = await importPhotos(id, files, (progress) => setPanel({ kind: 'import', progress }))
-      setPanel({ kind: 'import', progress: { done: files.length, total: files.length }, report })
+      setPanel({ kind: 'import', progress: { done: files.length, total: files.length }, report, timing: { deliverMs, readMs: performance.now() - start } })
       void navigator.storage?.persist?.()
       void geocodePending()
       void weatherPending()
@@ -251,16 +259,20 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       <div style={{ marginTop: 14 }}>
         <label className="btn">
           <IconPhotos /> Aggiungi foto
-          {/* ⚠️ image/heic dichiarato apposta: se la pagina accetta l'HEIC, iOS
-              consegna gli originali senza convertirli prima in JPEG. Con 70
-              foto la conversione teneva il selettore bloccato a lungo. */}
+          {/* ⚠️ Solo image/*. Nella 0.3.0 c'era anche image/heic,image/heif, per
+              far consegnare a iOS gli originali senza convertirli in JPEG: sul
+              telefono è andata PEGGIO, anche poche foto restavano minuti nel
+              selettore (prova dell'utente, 28/10/2026). Non rimetterlo. */}
           <input
             ref={input}
             className="hidden-input"
             type="file"
-            accept="image/*,image/heic,image/heif"
+            accept="image/*"
             multiple
-            onClick={() => setPanel({ kind: 'picking' })}
+            onClick={() => {
+              pickedAt.current = Date.now()
+              setPanel({ kind: 'picking' })
+            }}
             onChange={(e) => void onFiles(e.target.files)}
           />
         </label>
@@ -495,6 +507,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                 <div><span className="k">Già presenti</span><b>{panel.report.duplicates}</b></div>
                 <div><span className="k">Scartate</span><b>{panel.report.rejected.length}</b></div>
               </div>
+              {panel.timing && (
+                <p className="small" style={{ marginTop: 10 }}>
+                  {panel.timing.deliverMs != null && <>Consegna da iOS: {fmtSeconds(panel.timing.deliverMs)} · </>}
+                  Lettura nell'app: {fmtSeconds(panel.timing.readMs)}
+                </p>
+              )}
               {panel.report.rejected.length > 0 && (
                 <>
                   <p className="small" style={{ marginTop: 12 }}>
@@ -578,4 +596,10 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       )}
     </div>
   )
+}
+
+/** «45 s», «3 min 20 s»: per i tempi dell'import. */
+function fmtSeconds(ms: number): string {
+  const s = Math.round(ms / 1000)
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`
 }
