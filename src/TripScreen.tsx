@@ -9,6 +9,7 @@ import { importPhotos, type ImportProgress, type ImportReport } from './importPh
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import StopSheet from './StopSheet'
+import DayNav from './DayNav'
 import CoverSheet from './CoverSheet'
 import { thumbUrl } from './thumbUrl'
 import { setBusy } from './update'
@@ -408,6 +409,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         </section>
       ))}
       </div>
+      {days.length > 0 && <DayNav days={days.length} />}
 
       {stop && (
         <StopSheet

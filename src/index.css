@@ -421,8 +421,25 @@ textarea.field { min-height: 84px; resize: vertical; }
 .rating > button[role='radio'] { border: 0; background: none; padding: 2px 3px; font-size: 1.5rem; line-height: 1; color: color-mix(in srgb, var(--ink) 20%, transparent); }
 .rating > button.on { color: var(--saff); }
 .small-link { border: 0; background: none; padding: 4px 0; color: var(--accent); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
-.list > .meal-pick { width: 100%; border: 0; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; text-align: left; color: var(--ink); }
-.list > .meal-pick.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .stop .meal-line { color: var(--ink); font-weight: 700; }
 .meal-stars { color: var(--saff); letter-spacing: 1px; }
 .meal-country { margin-bottom: 12px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 36px; }
+
+/* ---- Navigazione per giorni nella pagina del viaggio (DayNav.tsx): discreta, in basso a destra. */
+.day-nav {
+  position: fixed; z-index: 900; right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 14px);
+  display: grid; gap: 6px; padding: 5px; border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 18%, transparent);
+  opacity: 0; transform: translateY(12px); pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+}
+.day-nav.on { opacity: 1; transform: none; pointer-events: auto; }
+.day-nav button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--card); color: var(--ink); }
+.day-nav button:disabled { opacity: 0.35; }
+.day-nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- Elenco dei locali: riga da scegliere + icona per guardarlo nelle mappe. */
+.list > .meal-row { padding: 0; gap: 0; }
+.meal-row.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.meal-row .meal-pick { flex: 1; min-width: 0; display: flex; padding: 12px 14px; border: 0; background: none; text-align: left; color: var(--ink); }
+.meal-row .meal-map { flex: none; width: 52px; align-self: stretch; display: grid; place-items: center; border: 0; border-left: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; color: var(--accent); }
+.meal-row .meal-map svg { width: 20px; height: 20px; }

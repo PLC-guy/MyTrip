@@ -49,17 +49,37 @@ export default function Sheet({ children, onClose, locked }: { children: ReactNo
     const vv = window.visualViewport
     const el = backdrop.current
     if (!vv || !el) return
+    /**
+     * ⚠️ Accorciare il foglio non basta quando la casella sta in fondo a un
+     * foglio lungo (il nome del locale sotto l'elenco dei locali): restava
+     * nascosta sotto la tastiera (29/10/2026). La casella attiva si porta in
+     * vista scorrendo il foglio stesso, non la pagina.
+     */
+    const reveal = () => {
+      const s = sheet.current
+      const a = document.activeElement
+      if (!s || !(a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) || !s.contains(a)) return
+      const r = a.getBoundingClientRect()
+      const box = s.getBoundingClientRect()
+      if (r.bottom > box.bottom - 12) s.scrollTop += r.bottom - box.bottom + 24
+      else if (r.top < box.top + 12) s.scrollTop -= box.top - r.top + 24
+    }
     const fit = () => {
       el.style.top = `${vv.offsetTop}px`
       el.style.height = `${vv.height}px`
       el.style.bottom = 'auto'
+      requestAnimationFrame(reveal)
     }
+    // La tastiera sale in circa un terzo di secondo: si riprova a fine corsa.
+    const onFocus = () => setTimeout(reveal, 350)
     fit()
     vv.addEventListener('resize', fit)
     vv.addEventListener('scroll', fit)
+    el.addEventListener('focusin', onFocus)
     return () => {
       vv.removeEventListener('resize', fit)
       vv.removeEventListener('scroll', fit)
+      el.removeEventListener('focusin', onFocus)
     }
   }, [])
 

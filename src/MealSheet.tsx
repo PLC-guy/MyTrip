@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { db, type Photo, type Stop } from './db'
 import { nearbyPlaces, RADII, type NearbyPlace } from './places'
 import Sheet from './Sheet'
+import MapsChooser from './MapsChooser'
+import { IconMap } from './icons'
 
 /**
  * «Dove hai mangiato?»: i locali vicini (OpenStreetMap), dal più vicino, oppure
@@ -16,6 +18,8 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
   const [places, setPlaces] = useState<NearbyPlace[]>()
   const [error, setError] = useState(false)
   const [radius, setRadius] = useState<number>(RADII[0])
+  /** Locale da controllare nelle mappe prima di sceglierlo. */
+  const [peek, setPeek] = useState<NearbyPlace>()
   const [name, setName] = useState(stop.meal && !stop.meal.lat ? stop.meal.name : '')
 
   useEffect(() => {
@@ -33,7 +37,7 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
     </button>
   )
 
-  const save = (meal: { name: string; kind?: string; lat?: number; lon?: number }) => {
+  const save = (meal: { name: string; kind?: string; lat?: number; lon?: number; address?: string }) => {
     void db.stops.update(stop.id, { meal: { ...meal, rating: stop.meal?.rating, photoId: photo?.id ?? stop.meal?.photoId } })
     onClose()
   }
@@ -51,18 +55,26 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
       )}
       {places && places.length > 0 && (
         <>
-          <p className="small">{places.length >= 100 ? 'I 100 più vicini' : `${places.length} entro ${radius} m`}, dal più vicino{photo ? ' alla foto' : ''}. Al chiuso il GPS sbaglia di qualche decina di metri: scegli quello giusto.</p>
+          <p className="small">{places.length >= 100 ? 'I 100 più vicini' : `${places.length} entro ${radius} m`}, dal più vicino{photo ? ' alla foto' : ''}. Al chiuso il GPS sbaglia di qualche decina di metri: se non sei sicuro, tocca la mappa accanto al nome per controllare.</p>
           <div className="list pick-list" style={{ marginTop: 10 }}>
             {places.map((p) => (
-              <button key={`${p.name}|${p.lat}|${p.lon}`} className={`pick meal-pick${stop.meal?.name === p.name ? ' on' : ''}`} onClick={() => save({ name: p.name, kind: p.kind, lat: p.lat, lon: p.lon })}>
-                <span className="pick-text">
-                  <b>{p.name}</b>
-                  <span className="k">
-                    {p.kind ? `${p.kind} · ` : ''}
-                    {p.distance} m
+              // Riga = scegli il locale; icona a destra = guardalo prima nelle mappe
+              // (richiesta dell'utente, 29/10/2026: per ritrovare un posto di cui
+              // non si ricorda il nome).
+              <div key={`${p.name}|${p.lat}|${p.lon}`} className={`meal-row${stop.meal?.name === p.name ? ' on' : ''}`}>
+                <button className="meal-pick" onClick={() => save({ name: p.name, kind: p.kind, lat: p.lat, lon: p.lon, address: p.address })}>
+                  <span className="pick-text">
+                    <b>{p.name}</b>
+                    <span className="k">
+                      {p.kind ? `${p.kind} · ` : ''}
+                      {p.distance} m
+                    </span>
                   </span>
-                </span>
-              </button>
+                </button>
+                <button className="meal-map" aria-label={`Guarda ${p.name} nelle mappe`} onClick={() => setPeek(p)}>
+                  <IconMap />
+                </button>
+              </div>
             ))}
           </div>
           {wider}
@@ -72,7 +84,8 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
         className="stack"
         onSubmit={(e) => {
           e.preventDefault()
-          if (name.trim()) save({ name: name.trim() })
+          // Nome a mano: la località della tappa aiuta Google Maps a trovarlo.
+          if (name.trim()) save({ name: name.trim(), address: stop.place })
         }}
       >
         <input className="field" value={name} maxLength={80} placeholder="Non è nell'elenco? Scrivi il nome" onChange={(e) => setName(e.target.value)} />
@@ -80,6 +93,7 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
           Salva questo nome
         </button>
       </form>
+      {peek && <MapsChooser target={{ name: peek.name, lat: peek.lat!, lon: peek.lon!, address: peek.address, search: true }} onClose={() => setPeek(undefined)} />}
     </Sheet>
   )
 }

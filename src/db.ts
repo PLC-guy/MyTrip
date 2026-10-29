@@ -93,6 +93,8 @@ export interface Meal {
   lon?: number
   /** La foto del piatto da cui è partita la ricerca: è la foto del locale negli elenchi. */
   photoId?: string
+  /** «Via Rizzoli 1, Bologna»: aiuta Google Maps a trovare il locale giusto. */
+  address?: string
 }
 
 export interface Photo {

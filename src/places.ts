@@ -61,6 +61,12 @@ async function fetchJson<T>(url: string, ms: number): Promise<T> {
   }
 }
 
+/** «Via Rizzoli 1, Bologna», con le parti che ci sono. */
+function address(street?: string, number?: string, city?: string): string | undefined {
+  const line = [street, number].filter(Boolean).join(' ')
+  return [line, city].filter(Boolean).join(', ') || undefined
+}
+
 function finish(list: NearbyPlace[]): NearbyPlace[] {
   // Lo stesso locale può arrivare due volte (punto ed edificio, o da due
   // richieste): stesso nome a meno di ~100 m = stesso locale, conta il più vicino.
@@ -75,7 +81,10 @@ function finish(list: NearbyPlace[]): NearbyPlace[] {
 }
 
 interface PhotonResult {
-  features?: { geometry: { coordinates: [number, number] }; properties: { name?: string; osm_value?: string } }[]
+  features?: {
+    geometry: { coordinates: [number, number] }
+    properties: { name?: string; osm_value?: string; street?: string; housenumber?: string; city?: string; locality?: string }
+  }[]
 }
 
 /** Una richiesta a Photon attorno a (qLat, qLon); le distanze si misurano dalla foto (lat, lon). */
@@ -83,7 +92,9 @@ async function photonAt(lat: number, lon: number, qLat: number, qLon: number, ra
   const tags = Object.keys(AMENITY)
     .map((t) => `&osm_tag=amenity:${t}`)
     .join('')
-  const json = await fetchJson<PhotonResult>(`${PHOTON}?lat=${qLat}&lon=${qLon}&radius=${qRadius / 1000}&limit=${PHOTON_LIMIT}&lang=default${tags}`, PHOTON_MS)
+  // ⚠️ lang=en: con "default" i nomi arrivano nella lingua del posto (a Bangkok in
+  // caratteri thai) e molti locali senza nome; l'italiano Photon non lo supporta.
+  const json = await fetchJson<PhotonResult>(`${PHOTON}?lat=${qLat}&lon=${qLon}&radius=${qRadius / 1000}&limit=${PHOTON_LIMIT}&lang=en${tags}`, PHOTON_MS)
   const out: NearbyPlace[] = []
   for (const f of json.features ?? []) {
     const [pLon, pLat] = f.geometry.coordinates
@@ -91,7 +102,8 @@ async function photonAt(lat: number, lon: number, qLat: number, qLon: number, ra
     if (!name) continue
     const distance = Math.round(distanceM(lat, lon, pLat, pLon))
     if (distance > radius) continue
-    out.push({ name, kind: AMENITY[f.properties.osm_value ?? ''], lat: pLat, lon: pLon, distance })
+    const pr = f.properties
+    out.push({ name, kind: AMENITY[pr.osm_value ?? ''], lat: pLat, lon: pLon, distance, address: address(pr.street, pr.housenumber, pr.city ?? pr.locality) })
   }
   return out
 }
@@ -156,7 +168,7 @@ async function overpass(lat: number, lon: number, radius: number): Promise<Nearb
     // Nome in italiano o in caratteri latini se c'è, come per le tappe.
     const name = tags['name:it'] ?? tags['name:latin'] ?? tags['name:en'] ?? tags.name
     if (!p || !name) continue
-    out.push({ name, kind: kindOf(tags), lat: p.lat, lon: p.lon, distance: Math.round(distanceM(lat, lon, p.lat, p.lon)) })
+    out.push({ name, kind: kindOf(tags), lat: p.lat, lon: p.lon, distance: Math.round(distanceM(lat, lon, p.lat, p.lon)), address: address(tags['addr:street'], tags['addr:housenumber'], tags['addr:city']) })
   }
   return finish(out)
 }

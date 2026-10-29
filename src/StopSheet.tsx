@@ -5,7 +5,8 @@ import { geocodePending } from './geocode'
 import { IconMap, IconScissors, IconShare, IconTrash } from './icons'
 import Sheet from './Sheet'
 import MealSheet from './MealSheet'
-import { mapsUrl, shareStop } from './share'
+import { shareStop, stopTarget } from './share'
+import MapsChooser from './MapsChooser'
 import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
 import { routesPending } from './routing'
@@ -22,7 +23,7 @@ interface Props {
   onOpen: (stopId: string) => void
 }
 
-type Ask = { kind: 'delete'; photo: Photo } | { kind: 'split'; photo: Photo } | { kind: 'merge'; other: Stop; into: 'prev' | 'next' } | { kind: 'meal'; photo?: Photo }
+type Ask = { kind: 'delete'; photo: Photo } | { kind: 'split'; photo: Photo } | { kind: 'merge'; other: Stop; into: 'prev' | 'next' } | { kind: 'meal'; photo?: Photo } | { kind: 'maps' }
 
 export default function StopSheet({ stop, photos, color, prev, next, onClose, onOpen }: Props) {
   const [note, setNote] = useState(stop.note ?? '')
@@ -170,9 +171,9 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
           >
             <IconShare /> Condividi
           </button>
-          <a className="btn ghost" href={mapsUrl(stop)} target="_blank" rel="noreferrer">
-            <IconMap /> Apri in Mappe
-          </a>
+          <button className="btn ghost" onClick={() => setAsk({ kind: 'maps' })}>
+            <IconMap /> Apri in mappe
+          </button>
         </div>
         {msg && <p className="small">{msg}</p>}
         {(prev || next) && (
@@ -195,6 +196,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
       </div>
 
       {ask?.kind === 'meal' && <MealSheet stop={stop} photo={ask.photo} onClose={() => setAsk(undefined)} />}
+      {ask?.kind === 'maps' && <MapsChooser target={stopTarget(stop)} onClose={() => setAsk(undefined)} />}
 
       {ask?.kind === 'delete' && (
         <Sheet onClose={() => setAsk(undefined)}>
