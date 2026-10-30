@@ -187,15 +187,18 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
           <textarea className="field" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
         )}
         <div className="row">
-          <button
-            className="btn ghost"
-            onClick={async () => {
-              const r = await shareStop({ ...stop, note }, photos[0])
-              if (r === 'copied') setMsg('Link copiato negli appunti')
-            }}
-          >
-            <IconShare /> Condividi
-          </button>
+          {/* Chi segue non condivide le tappe di un viaggio altrui (richiesta dell'utente, 30/10/2026). */}
+          {!readOnly && (
+            <button
+              className="btn ghost"
+              onClick={async () => {
+                const r = await shareStop({ ...stop, note }, photos[0])
+                if (r === 'copied') setMsg('Link copiato negli appunti')
+              }}
+            >
+              <IconShare /> Condividi
+            </button>
+          )}
           <button className="btn ghost" onClick={() => setAsk({ kind: 'maps' })}>
             <IconMap /> Apri in mappe
           </button>

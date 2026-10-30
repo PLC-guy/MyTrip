@@ -89,6 +89,28 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     if (readOnly) void pullShare(id)
   }, [id, readOnly])
 
+  /**
+   * «Aggiorna ora» con un riscontro (richiesta dell'utente, 30/10/2026): senza
+   * novità il tasto non cambiava e sembrava non fare niente. Ora «Controllo le
+   * novità…» per almeno un attimo, poi l'esito sotto il tasto.
+   */
+  const [checking, setChecking] = useState(false)
+  const [checked, setChecked] = useState<string>()
+  async function refreshNow() {
+    setChecking(true)
+    setChecked(undefined)
+    const before = await db.shares.get(id)
+    const n0 = await db.photos.where('tripId').equals(id).count()
+    await Promise.all([pullShare(id), new Promise((r) => setTimeout(r, 700))])
+    const after = await db.shares.get(id)
+    const n1 = await db.photos.where('tripId').equals(id).count()
+    setChecking(false)
+    if (after?.error) setChecked(`⚠️ ${after.error}`)
+    else if (n1 > n0) setChecked(n1 - n0 === 1 ? 'Arrivata 1 foto nuova.' : `Arrivate ${n1 - n0} foto nuove.`)
+    else if (after?.v !== before?.v) setChecked('Viaggio aggiornato.')
+    else setChecked('Nessuna novità: hai già tutto.')
+  }
+
   // Selezione annullata nel selettore di iOS: si toglie l'avviso di attesa.
   // (React non inoltra l'evento `cancel` degli input, si ascolta a mano.)
   const ready = data !== undefined
@@ -252,6 +274,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         <h1>{trip.name}</h1>
         <button className="icon-btn" onClick={() => {
             setSwapped(false)
+            setChecked(undefined)
             setPanel({ kind: 'menu' })
           }} aria-label="Altro">
           <IconMore />
@@ -640,7 +663,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                 <button className="btn ghost" onClick={() => swapTo({ kind: 'notify' })}>
                   🔔 Notifiche · {share?.notify ? (share.notify.mode === 'each' ? 'a ogni novità' : `ogni giorno alle ${share.notify.hour}`) : 'spente'}
                 </button>
-                <button className="btn ghost" disabled={sync.busy} onClick={() => void pullShare(id)}>{sync.busy ? 'Aggiorno…' : 'Aggiorna ora'}</button>
+                <button className="btn ghost" disabled={checking || sync.busy} onClick={() => void refreshNow()}>{checking || sync.busy ? 'Controllo le novità…' : 'Aggiorna ora'}</button>
+                {checked && <p className="small" style={{ margin: 0, textAlign: 'center' }}>{checked}</p>}
                 <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps (KML)</button>
                 <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Smetti di seguire</button>
               </div>
