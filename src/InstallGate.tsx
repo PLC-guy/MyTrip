@@ -150,7 +150,7 @@ function FollowHint() {
   if (!location.hash.startsWith('#/segui/')) return null
   return (
     <div className="note-box" style={{ textAlign: 'left', margin: '12px 0' }}>
-      <b>Hai ricevuto un viaggio da seguire.</b> Copia il link, installa MyTrip (o aprila, se ce l'hai già) e incollalo nella Home in «Segui il viaggio di qualcuno» (se hai già dei viaggi: «Nuovo viaggio» › «Segui un viaggio»).
+      <b>Hai ricevuto un viaggio da seguire.</b> Installa MyTrip (o aprila, se ce l'hai già), copia il link e incollalo nella Home in «Segui il viaggio di qualcuno» (se hai già dei viaggi: «Nuovo viaggio» › «Segui un viaggio»).
       <button
         className="btn"
         style={{ marginTop: 10 }}
@@ -179,7 +179,7 @@ export default function InstallGate({ force }: { force?: string }) {
         <h1>Installa MyTrip sulla Home</h1>
         <FollowHint />
         <Instructions platform={platform} inApp={inApp} install={install} oldIos={oldIos} />
-        <p className="small">I viaggi restano sul tuo telefono: nessun account. Solo quelli che decidi di condividere passano, cifrati, da un server.</p>
+        <p className="small">I viaggi restano sul tuo telefono. Solo quelli che decidi di condividere vengono inviati, cifrati, a un server.</p>
       </div>
     </div>
   )

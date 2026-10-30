@@ -72,10 +72,10 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
       {!ready ? (
         <>
           <p className="small">
-            Chi riceve il link vede questo viaggio e le foto che aggiungi, man mano, anche mentre sei in viaggio. Può solo guardare: modificare resta a te.
+            Chi riceve il link vede questo viaggio e le foto che aggiungi mentre sei in viaggio. Non può modificare il viaggio.
           </p>
           <p className="small">
-            Tutto viene cifrato su questo telefono prima di partire: il server conserva solo dati illeggibili, e la chiave sta nel link. Gli altri viaggi restano solo qui.
+            Tutto viene cifrato su questo telefono prima di partire. Il server conserva solo dati non leggibili, e la chiave sta nel link.
           </p>
           {progress}
           <div className="stack">
@@ -101,10 +101,10 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
             <button className="btn ghost" onClick={() => void copyLink()}>Copia il link</button>
           </div>
           <p className="small">
-            Le novità partono da sole con l'app aperta, qualche secondo dopo ogni modifica. Senza connessione restano in coda e partono appena torna.
+            Le novità si aggiornano da sole con l'app aperta, qualche secondo dopo ogni modifica. Senza connessione restano in coda e partono appena torna.
           </p>
           <p className="small">
-            Chi ha il link può vedere il viaggio: mandalo solo a chi vuoi. Se finisce a qualcuno di troppo, smetti di condividere e ricomincia: il link nuovo sarà diverso.
+            Chi ha il link può seguire il tuo viaggio, mandalo a chi vuoi. Se finisce a qualcuno di troppo, smetti di condividere e ricomincia così il link nuovo sarà diverso.
           </p>
           {!confirmStop ? (
             <button className="btn danger" onClick={() => setConfirmStop(true)}>Smetti di condividere</button>
