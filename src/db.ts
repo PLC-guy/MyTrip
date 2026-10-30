@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { forgetThumbs } from './thumbUrl'
+import { forgetThumbs, markRead, markWritten } from './thumbUrl'
 
 /**
  * Archivio locale (IndexedDB).
@@ -187,7 +187,8 @@ export interface Share {
   note?: { ids: string[]; since: number }
 }
 
-export const db = new Dexie('mytrip') as Dexie & {
+// Cache spenta: vedi le miniature rotte dopo unire/dividere, più sotto.
+export const db = new Dexie('mytrip', { cache: 'disabled' }) as Dexie & {
   trips: EntityTable<Trip, 'id'>
   stops: EntityTable<Stop, 'id'>
   photos: EntityTable<Photo, 'id'>
@@ -274,13 +275,25 @@ export function stopTitle(s: Stop): string {
  * quadratino blu col punto interrogativo, anche riportando la foto indietro.
  * Ogni volta che si riscrive una foto, o un viaggio con la copertina caricata,
  * l'indirizzo si dimentica a scrittura conclusa e si ricrea dal dato nuovo.
+ * ⚠️ 0.14.2: non bastava. La cache delle letture di Dexie 4 aggiornava le foto
+ * già lette senza rileggerle, col Blob vecchio (morto) dentro: da qui
+ * `cache: 'disabled'` e i numeri di giro di thumbUrl.ts (`markRead`,
+ * `markWritten`), con l'avviso al COMMIT della transazione, non a metà.
  */
-db.photos.hook('updating', function (_mods, id) {
-  this.onsuccess = () => forgetThumbs([String(id)])
+db.photos.hook('reading', (p) => {
+  markRead(p.thumb)
+  return p
 })
-db.trips.hook('updating', function (_mods, _id, trip) {
+db.trips.hook('reading', (t) => {
+  markRead(t.coverImage)
+  return t
+})
+db.photos.hook('updating', (_mods, id, _p, tx) => {
+  tx.on('complete', () => markWritten([String(id)]))
+})
+db.trips.hook('updating', (_mods, _id, trip, tx) => {
   const coverId = (trip as Trip).coverImageId
-  if (coverId) this.onsuccess = () => forgetThumbs([coverId])
+  if (coverId) tx.on('complete', () => markWritten([coverId]))
 })
 
 export async function mergeStops(intoId: string, fromId: string): Promise<void> {
