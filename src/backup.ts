@@ -130,15 +130,24 @@ function safeName(name: string): string {
 export async function exportTrips(tripIds: string[], onProgress?: Progress): Promise<File> {
   const trips = (await db.trips.bulkGet(tripIds)).filter((t): t is Trip => !!t)
   if (trips.length === 0) throw new Error('Nessun viaggio scelto')
-  const day = new Date().toISOString().slice(0, 10)
-  const base = trips.length === 1 ? safeName(trips[0].name) : `MyTrip-${trips.length}-viaggi-${day}`
+  const base = trips.length === 1 ? safeName(trips[0].name) : `MyTrip-${trips.length}-viaggi-${today()}`
   // Da mandare ad altri: miniature ridotte (shareThumb.ts). Il backup completo no.
   return pack(await build('trip', trips, 'export.json', onProgress, true), base)
 }
 
+/**
+ * Data LOCALE per il nome dei file, «2026-10-30»: backup di giorni diversi
+ * convivono nella stessa cartella (l'utente non vuole l'ora).
+ * (toISOString darebbe la data di Greenwich: dopo mezzanotte il giorno prima.)
+ */
+function today(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export async function exportBackup(onProgress?: Progress): Promise<File> {
-  const day = new Date().toISOString().slice(0, 10)
-  return pack(await build('backup', await db.trips.toArray(), 'backup.json', onProgress), `MyTrip-backup-${day}`)
+  return pack(await build('backup', await db.trips.toArray(), 'backup.json', onProgress), `MyTrip-backup-${today()}`)
 }
 
 
