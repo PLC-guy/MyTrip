@@ -512,3 +512,7 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 
 /* 🧪 Strumento di prova temporaneo (testTools.ts): riquadro tratteggiato, da togliere. */
 .test-tools { margin-top: 32px; padding: 4px 14px 14px; border: 2px dashed var(--saff); border-radius: var(--radius); }
+
+/* Impostazioni › Il viaggiatore: nome, casella e Salva distanziati. */
+.traveler-form { display: grid; gap: 10px; margin-top: 8px; }
+.traveler-form label { margin: 0; }

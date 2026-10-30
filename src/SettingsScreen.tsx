@@ -181,7 +181,7 @@ function TravelerPage({ go }: { go: (r: Route) => void }) {
     <div className="page">
       <Bar title="Il viaggiatore" back={() => go({ name: 'settings' })} />
       <form
-        className="stack"
+        className="traveler-form"
         onSubmit={(e) => {
           e.preventDefault()
           setProfile({ name })
@@ -206,7 +206,7 @@ function TravelerPage({ go }: { go: (r: Route) => void }) {
       </form>
       {saved && <p className="small">Salvato.</p>}
       <p className="small">
-        Chi segue i viaggi che condividi in diretta li vede come «Viaggio di {name.trim() || 'Alex'}». Il nome parte solo con i viaggi condivisi, cifrato come il resto del viaggio.
+        Chi segue i viaggi che condividi in diretta li vede come «Viaggio di {name.trim() || 'Alex'}». Il nome lascia il telefono solo con i viaggi condivisi, cifrato come il resto del viaggio.
       </p>
     </div>
   )
