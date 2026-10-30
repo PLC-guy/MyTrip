@@ -39,6 +39,14 @@ export const TRIP_KINDS: { key: TripKind; label: string; icon: string }[] = [
   { key: 'lavoro', label: 'Lavoro', icon: '💼' },
 ]
 
+/** Filtro per tipo di viaggio (Paesi, Home). Un viaggio senza tipo vale «piacere». */
+export type KindFilter = 'tutti' | TripKind
+export const KIND_FILTERS: { key: KindFilter; label: string }[] = [
+  { key: 'tutti', label: 'Tutti' },
+  { key: 'piacere', label: '🌴 Piacere' },
+  { key: 'lavoro', label: '💼 Lavoro' },
+]
+
 /** Meteo all'ora della prima foto della tappa (codici WMO di Open-Meteo). */
 export interface Weather {
   temp: number

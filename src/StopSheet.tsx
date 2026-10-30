@@ -208,7 +208,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
         )}
         {editing && (
           <p className="small" style={{ margin: 0 }}>
-            Sotto ogni foto: ✂ divide la tappa da quella foto in poi, il cestino la toglie dall'app (resta in galleria).
+            Sotto ogni foto ✂ divide la tappa da quella foto in poi, il cestino la toglie dall'app (resta in galleria).
           </p>
         )}
         {editing && (prev || next) && (

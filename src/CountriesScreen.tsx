@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type TripKind } from './db'
+import { db, KIND_FILTERS, type KindFilter } from './db'
 import { fmtRange, plural } from './format'
 import { IconBack } from './icons'
 import MapView from './MapView'
@@ -20,13 +20,6 @@ const WORLD = [
   { lat: 72, lon: 178 },
 ]
 
-type Filter = 'tutti' | TripKind
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'tutti', label: 'Tutti' },
-  { key: 'piacere', label: '🌴 Piacere' },
-  { key: 'lavoro', label: '💼 Lavoro' },
-]
 
 interface CountryRow {
   code: string
@@ -38,7 +31,7 @@ interface CountryRow {
 }
 
 export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
-  const [filter, setFilter] = useState<Filter>('tutti')
+  const [filter, setFilter] = useState<KindFilter>('tutti')
   const color = useCountryColor()
   const data = useLiveQuery(async () => ({ stops: await db.stops.orderBy('start').toArray(), trips: await db.trips.toArray() }))
   const pending = data?.stops.some((s) => !s.countryCode) ?? false
@@ -72,7 +65,7 @@ export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
       </div>
 
       <div className="segmented" role="radiogroup" aria-label="Quali viaggi">
-        {FILTERS.map((f) => (
+        {KIND_FILTERS.map((f) => (
           <button key={f.key} type="button" role="radio" aria-checked={filter === f.key} className={filter === f.key ? 'on' : ''} onClick={() => setFilter(f.key)}>
             {f.label}
           </button>

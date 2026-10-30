@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, TRIP_COLORS, type Photo, type Stop, type Trip, type TripKind } from './db'
+import { db, KIND_FILTERS, newId, TRIP_COLORS, type KindFilter, type Photo, type Stop, type Trip, type TripKind } from './db'
 import { legsToLines } from './legs'
 import { useLegs } from './useLegs'
 import KindPicker from './KindPicker'
@@ -14,6 +14,8 @@ import DayNav from './DayNav'
 import FollowSheet from './FollowSheet'
 import { backupDue, describeBackupAge, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
+
+const KIND_KEY = 'mytrip:home-kind'
 
 interface TripRow {
   trip: Trip
@@ -46,7 +48,28 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const [name, setName] = useState('')
   const [kind, setKind] = useState<TripKind>('piacere')
 
-  const rows = useLiveQuery(async (): Promise<TripRow[]> => {
+  /**
+   * Filtro Piacere/Lavoro (richiesta dell'utente, 30/10/2026): vale per elenco,
+   * mappa di tutti i viaggi e sottotitolo. Ricordato su questo dispositivo.
+   */
+  const [kindFilter, setKindFilter] = useState<KindFilter>(() => {
+    try {
+      const saved = localStorage.getItem(KIND_KEY)
+      return KIND_FILTERS.some((f) => f.key === saved) ? (saved as KindFilter) : 'tutti'
+    } catch {
+      return 'tutti'
+    }
+  })
+  const chooseKind = (k: KindFilter) => {
+    setKindFilter(k)
+    try {
+      localStorage.setItem(KIND_KEY, k)
+    } catch {
+      // Senza memoria del browser il filtro vale solo fino alla chiusura.
+    }
+  }
+
+  const allRows = useLiveQuery(async (): Promise<TripRow[]> => {
     const trips = await db.trips.toArray()
     const stops = await db.stops.orderBy('start').toArray()
     const shares = new Map((await db.shares.toArray()).map((s) => [s.tripId, s.role]))
@@ -67,6 +90,10 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     const when = (r: TripRow) => (r.stops.length ? r.stops[r.stops.length - 1].end : Number.MAX_SAFE_INTEGER - (Date.now() - r.trip.createdAt))
     return out.sort((a, b) => when(b) - when(a))
   })
+  // Il filtro compare solo se ci sono viaggi di tutti e due i tipi; senza, vale «Tutti».
+  const mixed = new Set(allRows?.map((r) => r.trip.kind ?? 'piacere')).size > 1
+  const activeKind = mixed ? kindFilter : 'tutti'
+  const rows = useMemo(() => (activeKind === 'tutti' ? allRows : allRows?.filter((r) => (r.trip.kind ?? 'piacere') === activeKind)), [allRows, activeKind])
 
   /**
    * Viaggio selezionato per l'anteprima: la mappa mostra solo lui, con le sue
@@ -134,7 +161,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     go({ name: 'trip', id: trip.id })
   }
 
-  if (!rows) return null
+  if (!rows || !allRows) return null
 
   return (
     <div className="page">
@@ -144,7 +171,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
           <IconGear />
         </button>
       </div>
-      {rows.length > 0 && (
+      {allRows.length > 0 && (
         <p className="subtitle">
           {plural(rows.length, 'viaggio', 'viaggi')} · {plural(new Set(rows.flatMap((r) => r.countries)).size, 'paese', 'paesi')} ·{' '}
           {/* Giorni di calendario di tutti i viaggi, come i «Giorni» delle schede. */}
@@ -156,7 +183,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </p>
       )}
 
-      {rows.length > 0 && (
+      {allRows.length > 0 && (
         <div className="shortcuts">
           <button onClick={() => go({ name: 'countries' })}>
             <IconGlobe /> Paesi
@@ -212,7 +239,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <div className="empty-state">
           <h2>Il primo viaggio</h2>
           <p>Crea un viaggio e aggiungi le foto dalla galleria: data e luogo di ogni scatto diventano tappe sulla mappa.</p>
@@ -232,6 +259,26 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
           <button className="btn small-btn" onClick={() => setCreating(true)}>
             <IconPlus /> Nuovo viaggio
           </button>
+        </div>
+      )}
+
+      {mixed && (
+        <div className="segmented" role="radiogroup" aria-label="Quali viaggi">
+          {KIND_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              role="radio"
+              aria-checked={activeKind === f.key}
+              className={activeKind === f.key ? 'on' : ''}
+              onClick={() => {
+                chooseKind(f.key)
+                setSelected(undefined)
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       )}
 
