@@ -1,6 +1,13 @@
-/** Lato lungo della miniatura: nitida sulla mappa e nel dettaglio, circa 30–40 KB. */
+/** Lato lungo della miniatura: nitida sulla mappa e nel dettaglio. */
 const MAX = 540
-const QUALITY = 0.78
+/**
+ * ⚠️ 0,62 e non più 0,78 (30/10/2026): il JPEG del canvas di Safari è poco
+ * efficiente e a 0,78 le miniature pesavano ~97 KB (la stessa immagine fatta da
+ * un codificatore migliore ne pesa 56). Gli export erano quindi enormi (40 MB per
+ * 297 foto) e lenti da mandare su WhatsApp. Scelta dell'utente: miniature più
+ * leggere, appena più morbide.
+ */
+const QUALITY = 0.62
 
 export interface Thumb {
   blob: Blob

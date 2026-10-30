@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl'
 import type { FeatureCollection } from 'geojson'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { cssColor } from './theme'
+import { mapStyle } from './mapStyle'
 
 export interface MapPin {
   id: string
@@ -57,7 +58,6 @@ interface Props {
  * possono mostrare in italiano. Con le tile a immagini di OpenStreetMap i nomi
  * erano nella lingua del posto (in Thailandia, illeggibili).
  */
-const STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 
 /** Nome italiano, altrimenti la trascrizione in alfabeto latino, altrimenti quello locale. */
 const LABEL: maplibregl.ExpressionSpecification = ['coalesce', ['get', 'name:it'], ['get', 'name:latin'], ['get', 'name']]
@@ -187,7 +187,8 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
   useEffect(() => {
     const m = new maplibregl.Map({
       container: el.current!,
-      style: STYLE,
+      // Stile già pronto in memoria: niente attese di rete a ogni mappa (mapStyle.ts).
+      style: mapStyle(),
       center: [10, 30],
       zoom: 1.2,
       attributionControl: { compact: true },

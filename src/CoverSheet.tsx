@@ -13,7 +13,7 @@ import { forgetThumbs, thumbUrl } from './thumbUrl'
  * ⚠️ Niente foto degli altri viaggi (fino alla 0.10.0 c'erano; tolte su
  * richiesta dell'utente, 28/10/2026).
  */
-export default function CoverSheet({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+export default function CoverSheet({ trip, onClose, leaving, swap }: { trip: Trip; onClose: () => void; leaving?: boolean; swap?: boolean }) {
   const [error, setError] = useState<string>()
   const [working, setWorking] = useState(false)
 
@@ -48,9 +48,9 @@ export default function CoverSheet({ trip, onClose }: { trip: Trip; onClose: () 
   const current = trip.coverImage ? 'image' : trip.coverPhotoId
 
   return (
-    <Sheet onClose={onClose} locked={working}>
+    <Sheet onClose={onClose} locked={working} leaving={leaving} swap={swap}>
       <h2>Copertina</h2>
-      <p className="small">Scegli una foto di questo viaggio, oppure caricane una dalla galleria solo per la copertina: non verrà aggiunta alle tappe.</p>
+      <p className="small">Scegli una foto di questo viaggio, oppure caricane una dalla galleria. Non verrà aggiunta alle tappe.</p>
       <div className="stack">
         <label className="btn" aria-disabled={working}>
           <IconPhotos /> {working ? 'Preparo la copertina…' : 'Scegli dalla galleria'}

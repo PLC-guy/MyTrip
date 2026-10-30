@@ -10,6 +10,7 @@ import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from 
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
+import DayNav from './DayNav'
 import { backupDue, describeBackupAge, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
 
@@ -97,8 +98,22 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   }, [rows, preview, covers, previewLegs])
 
   const select = (id: string) => {
-    // Niente scorrimento: la mappa è agganciata in alto (.home-map) e resta in vista.
-    setSelected(id === selected ? undefined : id)
+    const next = id === selected ? undefined : id
+    setSelected(next)
+    if (!next) return
+    // La scheda scelta si allinea subito sotto la mappa agganciata in alto
+    // (richiesta dell'utente, 30/10/2026). Dopo il disegno: «Visualizza tappe»
+    // cambia l'altezza della scheda.
+    requestAnimationFrame(() => {
+      const card = document.getElementById(`trip-${next}`)
+      const map = document.querySelector('.home-map')
+      if (!card || !map) return
+      // Dove sarà il fondo della mappa a scorrimento finito: agganciata in alto,
+      // sotto la barra di stato (non dov'è adesso, se la pagina è ancora in cima).
+      const status = document.querySelector('.statusbar-bg')?.getBoundingClientRect().height ?? 0
+      const under = status + map.getBoundingClientRect().height + 10
+      window.scrollTo({ top: window.scrollY + card.getBoundingClientRect().top - under, behavior: 'smooth' })
+    })
   }
 
   async function create() {
@@ -126,27 +141,28 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
       {rows.length > 0 && (
         <p className="subtitle">
           {plural(rows.length, 'viaggio', 'viaggi')} · {plural(new Set(rows.flatMap((r) => r.countries)).size, 'paese', 'paesi')} ·{' '}
+          {/* Giorni di calendario di tutti i viaggi, come i «Giorni» delle schede. */}
           {plural(
-            rows.reduce((n, r) => n + r.stops.length, 0),
-            'tappa',
-            'tappe',
+            rows.reduce((n, r) => n + (r.stops.length ? daySpan(r.stops[0].first, r.stops[r.stops.length - 1].first) : 0), 0),
+            'giorno in viaggio',
+            'giorni in viaggio',
           )}
         </p>
       )}
 
       {rows.length > 0 && (
         <div className="shortcuts">
-          <button onClick={() => go({ name: 'search' })}>
-            <IconSearch /> Cerca
-          </button>
-          <button onClick={() => go({ name: 'stars' })}>
-            <IconStar /> Speciali
+          <button onClick={() => go({ name: 'countries' })}>
+            <IconGlobe /> Paesi
           </button>
           <button onClick={() => go({ name: 'meals' })}>
             <span aria-hidden="true">🍽️</span> Locali
           </button>
-          <button onClick={() => go({ name: 'countries' })}>
-            <IconGlobe /> Paesi
+          <button onClick={() => go({ name: 'stars' })}>
+            <IconStar /> Speciali
+          </button>
+          <button onClick={() => go({ name: 'search' })}>
+            <IconSearch /> Cerca
           </button>
         </div>
       )}
@@ -210,9 +226,10 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         </div>
       )}
 
-      <div className="trips">
+      {/* Con un viaggio scelto, spazio sotto l'elenco: anche l'ultimo deve poter salire fin sotto la mappa. */}
+      <div className={`trips${selected ? ' room' : ''}`}>
         {rows.map((r) => (
-          <div key={r.trip.id} className={`trip-item${r.trip.id === selected ? ' on' : ''}`}>
+          <div key={r.trip.id} id={`trip-${r.trip.id}`} className={`trip-item${r.trip.id === selected ? ' on' : ''}`}>
           {/* Scheda come quelle del sito: etichetta in maiuscoletto, titolo, separatore, dati in colonne. */}
           <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
             <div className="trip-head">
@@ -233,7 +250,8 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
                 </div>
               )}
             </div>
-            <hr className="rule" />
+            {/* La perforazione del biglietto, con le due tacche ai lati, come sul sito di Greta. */}
+            <div className="perf" aria-hidden="true" />
             {r.stops.length ? (
               <div className="facts">
                 <div>
@@ -262,6 +280,9 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
         ))}
       </div>
 
+
+      {/* Solo «torna in cima», senza giorni (richiesta dell'utente). */}
+      <DayNav days={0} />
 
       {creating && (
         <Sheet onClose={() => setCreating(false)}>

@@ -95,6 +95,20 @@ img { display: block; }
 .bar { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-bottom: 12px; }
 .bar h1 { flex: 1; margin: 0; font: var(--display-weight) 1.75rem/1.1 var(--display); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar h1.brand { font-size: 2.5rem; line-height: 1.05; white-space: normal; }
+/* Intestazione fissa in alto nelle pagine interne (titolo, indietro, ⋯), con un
+   suo fondo e una riga sotto (richiesta dell'utente, 30/10/2026). ⚠️ Il titolo
+   resta 20px sotto la safe area, fuori dalla sfumatura di iOS (vedi .page): il
+   margine negativo compensa l'imbottitura, così da ferma non si sposta.
+   La Home no: lì in alto si aggancia la mappa. */
+.page > .bar:not(:has(> .brand)) {
+  --gutter-l: max(16px, env(safe-area-inset-left)); --gutter-r: max(16px, env(safe-area-inset-right));
+  position: sticky; top: env(safe-area-inset-top); z-index: 30;
+  margin: -20px calc(-1 * var(--gutter-r)) 14px calc(-1 * var(--gutter-l));
+  padding: 20px var(--gutter-r) 10px var(--gutter-l);
+  background: var(--bg);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.page > .bar:not(:has(> .brand)) h1 { font-size: 1.55rem; }
 .subtitle { margin: -4px 0 16px; color: var(--muted); }
 .icon-btn {
   width: 42px; height: 42px; flex: none; display: grid; place-items: center;
@@ -118,7 +132,8 @@ img { display: block; }
 
 /* --- Mappa --- */
 .map-wrap { position: relative; }
-.map { position: relative; height: 42dvh; min-height: 240px; border-radius: var(--radius); overflow: hidden; background: var(--map-bg); z-index: 0; }
+/* Bordo sottile e un'ombra appena accennata: la mappa si stacca dal fondo (30/10/2026). */
+.map { position: relative; height: 42dvh; min-height: 240px; border-radius: var(--radius); overflow: hidden; background: var(--map-bg); z-index: 0; border: 1.5px solid color-mix(in srgb, var(--ink) 16%, transparent); box-shadow: 0 2px 10px -6px color-mix(in srgb, var(--ink) 40%, transparent); }
 .map.tall { height: 52dvh; }
 .maplibregl-map { font: inherit; }
 .maplibregl-ctrl-attrib { font-size: 10px; }
@@ -155,7 +170,14 @@ img { display: block; }
 .empty-state .btn { margin-top: 8px; }
 
 /* --- Scorciatoie della Home --- */
-.shortcuts { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+/* La fila scorre fino ai bordi veri dello schermo, non fino al margine della
+   pagina (prima i pulsanti sparivano 16px prima del bordo). Il margine della
+   pagina diventa spazio interno della fila. */
+.shortcuts {
+  --gutter-l: max(16px, env(safe-area-inset-left)); --gutter-r: max(16px, env(safe-area-inset-right));
+  display: flex; gap: 8px; margin: 0 calc(-1 * var(--gutter-r)) 14px calc(-1 * var(--gutter-l)); padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  overflow-x: auto; scrollbar-width: none; scroll-padding-inline: var(--gutter-l) var(--gutter-r);
+}
 .shortcuts::-webkit-scrollbar { display: none; }
 .shortcuts button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
 .shortcuts svg { width: 17px; height: 17px; }
@@ -170,6 +192,13 @@ img { display: block; }
 .trip-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .trip-main { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
 .trip-main h3 { flex: 1; margin: 0; font: var(--display-weight) 1.6rem/1.15 var(--display); }
+/* Biglietto: riga tratteggiata con due tacche semicircolari che «mordono» i
+   bordi della scheda (sistema «Il biglietto» del sito di Greta). Le tacche hanno
+   il colore del fondo pagina: sembrano buchi. */
+.trip-card .perf { position: relative; border-top: 2px dashed color-mix(in srgb, var(--ink) 30%, transparent); margin: 14px 0 12px; }
+.trip-card .perf::before, .trip-card .perf::after { content: ''; position: absolute; top: -10px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg); }
+.trip-card .perf::before { left: -25px; }
+.trip-card .perf::after { right: -25px; }
 .trip-card .cover { width: 58px; height: 58px; flex: none; border-radius: 4px; object-fit: cover; background: var(--line); }
 .facts { display: flex; gap: 22px; }
 .facts > div { display: grid; gap: 2px; }
@@ -255,6 +284,12 @@ img { display: block; }
 .sheet h2 { margin: 0 0 4px; font: var(--display-weight) 1.5rem/1.2 var(--display); color: var(--accent); }
 .sheet .stack { display: grid; gap: 10px; margin-top: 16px; }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+/* Scambio fra due fogli (Sheet: `leaving`, `swap`): uno scende fuori dallo
+   schermo, l'altro sale da sotto. Il fondo scuro resta fermo (.still). */
+.sheet-backdrop.still { animation: none; }
+.sheet.swap { animation: rise-full 0.22s ease-out; }
+.sheet.leaving { transform: translateY(100%) !important; transition: transform 0.22s ease-in; }
+@keyframes rise-full { from { transform: translateY(100%); } }
 @keyframes fade { from { opacity: 0; } }
 
 .field { width: 100%; padding: 13px 14px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--paper); outline: none; }
@@ -386,10 +421,9 @@ textarea.field { min-height: 84px; resize: vertical; }
 .nav-list { margin-top: 8px; }
 .list > .nav-item { width: 100%; border: 0; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; text-align: left; color: var(--ink); }
 .list > .nav-item:last-child { border-bottom: 0; }
-.nav-item > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.list > .nav-item { position: relative; justify-content: center; min-height: 56px; }
 .nav-item b { font: var(--display-weight) 1.15rem/1.2 var(--display); }
-.nav-item .k { font-size: 0.88rem; }
-.nav-item .chev { font-size: 1.6rem; line-height: 1; color: var(--muted); }
+.nav-item .chev { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 1.6rem; line-height: 1; color: var(--muted); }
 /* Backup da fare: la voce prende il fondo degli avvisi. */
 .nav-item.due { background: var(--warm); }
 
@@ -443,3 +477,15 @@ textarea.field { min-height: 84px; resize: vertical; }
 .meal-row .meal-pick { flex: 1; min-width: 0; display: flex; padding: 12px 14px; border: 0; background: none; text-align: left; color: var(--ink); }
 .meal-row .meal-map { flex: none; width: 52px; align-self: stretch; display: grid; place-items: center; border: 0; border-left: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; color: var(--accent); }
 .meal-row .meal-map svg { width: 20px; height: 20px; }
+
+/* ---- Transizioni fra le pagine (App.tsx, `go`): scorrono di lato, senza dissolvenza. */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); mix-blend-mode: normal; }
+html[data-nav='forward']::view-transition-old(root) { animation-name: nav-out-left; }
+html[data-nav='forward']::view-transition-new(root) { animation-name: nav-in-right; }
+html[data-nav='back']::view-transition-old(root) { animation-name: nav-out-right; }
+html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; }
+@keyframes nav-out-left { to { transform: translateX(-100%); } }
+@keyframes nav-in-right { from { transform: translateX(100%); } }
+@keyframes nav-out-right { to { transform: translateX(100%); } }
+@keyframes nav-in-left { from { transform: translateX(-100%); } }
+.trips.room { padding-bottom: 60dvh; }

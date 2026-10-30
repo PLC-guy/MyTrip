@@ -147,6 +147,10 @@ export interface Route {
   /** Il percorso usa un traghetto. */
   ferry?: boolean
   at: number
+  /** Profilo usato davvero, se quello del mezzo non trovava strada (vedi routing.ts). */
+  via?: string
+  /** Versione delle regole con cui è stato chiesto (ROUTE_V in routing.ts). */
+  v?: number
 }
 
 export const db = new Dexie('mytrip') as Dexie & {
@@ -223,6 +227,22 @@ export function stopTitle(s: Stop): string {
  * Unisce la tappa `fromId` in `intoId`: foto, note e stellina passano alla
  * seconda, la prima sparisce. Il nome scelto a mano di `intoId` resta.
  */
+/**
+ * ⚠️ MINIATURE ROTTE DOPO UNIRE/DIVIDERE (30/10/2026): spostare una foto in
+ * un'altra tappa riscrive la sua scheda nel database, e su Safari l'indirizzo
+ * della miniatura già in memoria (thumbUrl.ts) smette di funzionare: compariva il
+ * quadratino blu col punto interrogativo, anche riportando la foto indietro.
+ * Ogni volta che si riscrive una foto, o un viaggio con la copertina caricata,
+ * l'indirizzo si dimentica a scrittura conclusa e si ricrea dal dato nuovo.
+ */
+db.photos.hook('updating', function (_mods, id) {
+  this.onsuccess = () => forgetThumbs([String(id)])
+})
+db.trips.hook('updating', function (_mods, _id, trip) {
+  const coverId = (trip as Trip).coverImageId
+  if (coverId) this.onsuccess = () => forgetThumbs([coverId])
+})
+
 export async function mergeStops(intoId: string, fromId: string): Promise<void> {
   await db.transaction('rw', db.stops, db.photos, async () => {
     const into = await db.stops.get(intoId)

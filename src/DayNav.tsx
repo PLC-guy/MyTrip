@@ -8,14 +8,17 @@ import { useEffect, useState } from 'react'
  * Compaiono solo quando si è scesi oltre la mappa.
  *
  * I giorni si leggono dalla pagina (`.timeline > section`), così questo
- * componente non dipende da come TripScreen li calcola.
+ * componente non dipende da come TripScreen li calcola. Con `days` 0 o 1 resta
+ * solo «torna in cima»: è così anche nella Home.
  */
 const SHOW_AFTER = 400
 
-/** Margine sopra il giorno raggiunto: la fascia della barra di stato più un po' d'aria. */
+/** Margine sopra il giorno raggiunto: sotto l'intestazione fissa (o la barra di stato), più un po' d'aria. */
 function topGap(): number {
-  const bar = document.querySelector('.statusbar-bg')
-  return (bar ? bar.getBoundingClientRect().height : 0) + 12
+  const status = document.querySelector('.statusbar-bg')?.getBoundingClientRect().bottom ?? 0
+  const header = document.querySelector('.page > .bar')
+  const stuck = header && getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().bottom : 0
+  return Math.max(status, stuck) + 10
 }
 
 /** Posizione di ogni giorno rispetto al punto d'arrivo: ≤ 0 = già passato o raggiunto. */

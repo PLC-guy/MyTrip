@@ -1,5 +1,6 @@
 import { db, type Photo, type Route, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
+import type { Progress } from './exportFlow'
 
 /**
  * File di export: un viaggio singolo o il backup di tutti.
@@ -50,16 +51,58 @@ function dataUrlToBlob(url: string): Blob {
   return new Blob([bytes], { type })
 }
 
-async function build(kind: ExportFile['kind'], trips: Trip[]): Promise<ExportFile> {
+/** Foto convertite insieme: abbastanza per andare veloci, non tante da riempire la memoria. */
+const PARALLEL = 8
+
+/**
+ * Costruisce il file. ⚠️ Non più un unico JSON.stringify: con viaggi grandi
+ * (centinaia di foto, ~135 KB l'una nel file) era una stringa enorme in memoria,
+ * lenta da creare. Ora ogni foto diventa un pezzo a sé e il file si compone dai
+ * pezzi; le miniature si convertono PARALLEL alla volta, con l'avanzamento.
+ * Il contenuto è identico a prima: formato 1, si reimporta allo stesso modo.
+ */
+async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onProgress?: Progress): Promise<File> {
   const ids = trips.map((t) => t.id)
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
   const routes = await db.routes.where('tripId').anyOf(ids).toArray()
-  const encoded: PhotoFile[] = []
-  for (const p of photos) encoded.push({ ...p, thumb: await blobToDataUrl(p.thumb) })
   const tripFiles: TripFile[] = []
   for (const t of trips) tripFiles.push({ ...t, coverImage: t.coverImage ? await blobToDataUrl(t.coverImage) : undefined })
-  return { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, photos: encoded, routes }
+
+  const parts: string[] = []
+  onProgress?.(0, photos.length)
+  for (let i = 0; i < photos.length; i += PARALLEL) {
+    const chunk = await Promise.all(photos.slice(i, i + PARALLEL).map(async (p) => JSON.stringify({ ...p, thumb: await blobToDataUrl(p.thumb) } satisfies PhotoFile)))
+    parts.push(...chunk)
+    onProgress?.(Math.min(i + PARALLEL, photos.length), photos.length)
+  }
+
+  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes }
+  const json = JSON.stringify(head)
+  const pieces: BlobPart[] = [json.slice(0, -1), ',"photos":[']
+  parts.forEach((p, i) => pieces.push(i ? ',' : '', p))
+  pieces.push(']}')
+  return new File(pieces, name, { type: 'application/json' })
+}
+
+/**
+ * FILE COMPRESSO (30/10/2026, scelta dell'utente per mandarli più in fretta):
+ * il contenuto è lo stesso JSON di sempre (formato 1), compresso con gzip dal
+ * browser. Estensione `.mytrip`: non è un file da aprire a mano, si reimporta in
+ * MyTrip (anche sul computer). Senza CompressionStream (browser vecchi) resta il
+ * JSON in chiaro, `.mytrip.json`, e l'import li legge tutti e due.
+ */
+async function pack(json: File, base: string): Promise<File> {
+  if (typeof CompressionStream === 'undefined') return new File([json], `${base}.mytrip.json`, { type: 'application/json' })
+  const gz = await new Response(json.stream().pipeThrough(new CompressionStream('gzip'))).blob()
+  return new File([gz], `${base}.mytrip`, { type: 'application/octet-stream' })
+}
+
+/** Legge un file di MyTrip, compresso o in chiaro (riconosce gzip dai primi due byte). */
+async function unpack(file: File): Promise<string> {
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer())
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return file.text()
+  return new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text()
 }
 
 /** Nome di file sicuro su ogni sistema. */
@@ -72,44 +115,19 @@ function safeName(name: string): string {
  * prende il suo nome; più viaggi stanno in un unico file, che si reimporta allo
  * stesso modo. Non conta come backup completo: per quello c'è `exportBackup`.
  */
-export async function exportTrips(tripIds: string[]): Promise<File> {
+export async function exportTrips(tripIds: string[], onProgress?: Progress): Promise<File> {
   const trips = (await db.trips.bulkGet(tripIds)).filter((t): t is Trip => !!t)
   if (trips.length === 0) throw new Error('Nessun viaggio scelto')
-  const data = await build('trip', trips)
   const day = new Date().toISOString().slice(0, 10)
-  const name = trips.length === 1 ? `${safeName(trips[0].name)}.mytrip.json` : `MyTrip-${trips.length}-viaggi-${day}.mytrip.json`
-  return new File([JSON.stringify(data)], name, { type: 'application/json' })
+  const base = trips.length === 1 ? safeName(trips[0].name) : `MyTrip-${trips.length}-viaggi-${day}`
+  return pack(await build('trip', trips, 'export.json', onProgress), base)
 }
 
-export async function exportBackup(): Promise<File> {
-  const data = await build('backup', await db.trips.toArray())
+export async function exportBackup(onProgress?: Progress): Promise<File> {
   const day = new Date().toISOString().slice(0, 10)
-  return new File([JSON.stringify(data)], `MyTrip-backup-${day}.json`, { type: 'application/json' })
+  return pack(await build('backup', await db.trips.toArray(), 'backup.json', onProgress), `MyTrip-backup-${day}`)
 }
 
-/**
- * Consegna il file: su iPhone col foglio di condivisione (Salva in File,
- * AirDrop, Messaggi…), altrove come download.
- */
-/** Consegna il file; false se la condivisione è stata annullata (serve al promemoria di backup). */
-export async function deliverFile(file: File): Promise<boolean> {
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file] })
-      return true
-    } catch (e) {
-      // Annullato da chi usa l'app: non è un errore.
-      if (e instanceof DOMException && e.name === 'AbortError') return false
-    }
-  }
-  const url = URL.createObjectURL(file)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = file.name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  return true
-}
 
 export interface ImportSummary {
   trips: string[]
@@ -123,7 +141,7 @@ export interface ImportSummary {
 export async function importFile(file: File): Promise<ImportSummary> {
   let data: ExportFile
   try {
-    data = JSON.parse(await file.text()) as ExportFile
+    data = JSON.parse(await unpack(file)) as ExportFile
   } catch {
     throw new Error('Il file non è leggibile.')
   }

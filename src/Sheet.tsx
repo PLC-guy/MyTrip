@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 /** Trascinamento oltre il quale il foglio si chiude, in pixel… */
 const CLOSE_PX = 110
@@ -13,17 +13,40 @@ const CLOSE_SPEED = 0.6
  * su e giù finché non si chiudeva l'app (visto due volte sull'iPhone, 28/10/2026).
  */
 let openSheets = 0
+/**
+ * ⚠️ `overflow: hidden` sul body da solo NON ferma la pagina su iPhone: col
+ * foglio «Nuovo viaggio», il diario o il nome del locale aperti (tastiera
+ * compresa) lo sfondo scorreva lo stesso e partivano animazioni strane
+ * (30/10/2026). Ora la pagina si blocca dov'è (`position: fixed` spostata della
+ * quantità già scorsa) e, chiuso l'ultimo foglio, torna esattamente lì.
+ * Sempre col contatore: si sblocca solo quando non resta nessun foglio.
+ */
+let lockedAt = 0
 function lockPage() {
   openSheets++
-  document.body.style.overflow = 'hidden'
+  if (openSheets > 1) return
+  lockedAt = window.scrollY
+  Object.assign(document.body.style, { position: 'fixed', top: `-${lockedAt}px`, left: '0', right: '0', overflow: 'hidden' })
 }
 function unlockPage() {
   openSheets = Math.max(0, openSheets - 1)
-  if (openSheets === 0) document.body.style.overflow = ''
+  if (openSheets > 0) return
+  Object.assign(document.body.style, { position: '', top: '', left: '', right: '', overflow: '' })
+  window.scrollTo({ top: lockedAt, behavior: 'instant' })
 }
 
-/** Foglio che sale dal basso. Si chiude toccando fuori o trascinandolo in basso, salvo `locked`. */
-export default function Sheet({ children, onClose, locked }: { children: ReactNode; onClose: () => void; locked?: boolean }) {
+/** Durata dello scambio fra due fogli (`leaving`/`swap`), in millisecondi. */
+export const SWAP_MS = 220
+
+/**
+ * Foglio che sale dal basso. Si chiude toccando fuori o trascinandolo in basso, salvo `locked`.
+ * - `leaving`: scivola via verso il basso (il fondo scuro resta): si usa per
+ *   scambiare un foglio con un altro, come menu ⋯ ↔ copertina.
+ * - `swap`: entra salendo da sotto lo schermo, invece della comparsa breve.
+ */
+export default function Sheet({ children, onClose, locked, leaving, swap }: { children: ReactNode; onClose: () => void; locked?: boolean; leaving?: boolean; swap?: boolean }) {
+  // Se un altro foglio è già aperto (scambio), il fondo scuro non ricompare sfumando.
+  const [fadeIn] = useState(() => openSheets === 0)
   const backdrop = useRef<HTMLDivElement>(null)
   const sheet = useRef<HTMLDivElement>(null)
   const closeRef = useRef(onClose)
@@ -75,11 +98,17 @@ export default function Sheet({ children, onClose, locked }: { children: ReactNo
     fit()
     vv.addEventListener('resize', fit)
     vv.addEventListener('scroll', fit)
+    // Il dito fuori dal foglio (sul fondo scuro) non deve trascinare la pagina sotto.
+    const noScroll = (e: TouchEvent) => {
+      if (!sheet.current?.contains(e.target as Node)) e.preventDefault()
+    }
     el.addEventListener('focusin', onFocus)
+    el.addEventListener('touchmove', noScroll, { passive: false })
     return () => {
       vv.removeEventListener('resize', fit)
       vv.removeEventListener('scroll', fit)
       el.removeEventListener('focusin', onFocus)
+      el.removeEventListener('touchmove', noScroll)
     }
   }, [])
 
@@ -107,8 +136,10 @@ export default function Sheet({ children, onClose, locked }: { children: ReactNo
       startT = performance.now()
       dy = 0
       dragging = false
-      // Nelle caselle di testo il dito serve a scrivere e selezionare.
-      ignore = lockedRef.current === true || e.touches.length > 1 || (e.target as HTMLElement).closest('textarea, input') !== null
+      // Nelle caselle di testo il dito serve a scrivere e selezionare. Un foglio
+      // aperto sopra questo (dentro il suo contenuto) si trascina da sé.
+      const target = e.target as HTMLElement
+      ignore = lockedRef.current === true || e.touches.length > 1 || target.closest('textarea, input') !== null || target.closest('.sheet') !== el
     }
     const move = (e: TouchEvent) => {
       if (ignore) return
@@ -152,8 +183,8 @@ export default function Sheet({ children, onClose, locked }: { children: ReactNo
   }, [])
 
   return (
-    <div ref={backdrop} className="sheet-backdrop" onClick={() => !locked && onClose()}>
-      <div ref={sheet} className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div ref={backdrop} className={`sheet-backdrop${fadeIn ? '' : ' still'}`} onClick={() => !locked && !leaving && onClose()}>
+      <div ref={sheet} className={`sheet${swap ? ' swap' : ''}${leaving ? ' leaving' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="grab" />
         {children}
       </div>

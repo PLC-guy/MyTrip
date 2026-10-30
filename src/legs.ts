@@ -36,9 +36,13 @@ const ABSURD_RATIO_ALWAYS = 8
  * pezzi, con linee lontane dalle tappe (viaggio «Test» in montagna, 28/10/2026).
  * Aggancio oltre SNAP_MAX_M (o oltre SNAP_MAX_SHARE della linea d'aria, per i
  * tratti lunghi) = percorso non valido, si disegna la linea dritta.
+ * ⚠️ 30% e non 10%: in Gran Canaria (30/10/2026) un tratto in auto di 22 km con
+ * la tappa a 2,7 km dalla strada (12%) finiva in linea dritta pur avendo la
+ * strada. I casi di montagna da scartare avevano agganci più lunghi del tratto
+ * stesso (100–140%): restano scartati.
  */
 const SNAP_MAX_M = 300
-const SNAP_MAX_SHARE = 0.1
+const SNAP_MAX_SHARE = 0.3
 /** Un percorso vero non è più corto della linea d'aria: se lo è, l'aggancio ha tagliato il tratto. */
 const MIN_ROUTE_SHARE = 0.7
 /** Margine sul tempo: in auto servono X minuti, tra le foto ne sono passati meno di X − margine. */

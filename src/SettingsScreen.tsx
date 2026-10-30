@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './db'
-import { deliverFile, exportTrips, importFile } from './backup'
+import { exportTrips, importFile } from './backup'
+import { shareExport } from './exportFlow'
 import Sheet from './Sheet'
 import { backupDue, describeBackupAge, runBackup, useBackupState } from './backupReminder'
 import { fmtBytes, fmtRange, plural } from './format'
@@ -41,21 +42,17 @@ function Bar({ title, back }: { title: string; back: () => void }) {
   )
 }
 
-/** Voce che apre una pagina: titolo, riassunto dello stato attuale, freccia. */
-function NavItem({ title, detail, due, onClick }: { title: string; detail: ReactNode; due?: boolean; onClick: () => void }) {
+/** Voce che apre una pagina: solo il nome, centrato, e la freccia (senza sottotitolo, scelta dell'utente). */
+function NavItem({ title, due, onClick }: { title: string; due?: boolean; onClick: () => void }) {
   return (
     <button className={`nav-item${due ? ' due' : ''}`} onClick={onClick}>
-      <span>
-        <b>{title}</b>
-        <span className="k">{detail}</span>
-      </span>
+      <b>{title}</b>
       <span className="chev" aria-hidden="true">›</span>
     </button>
   )
 }
 
 function SettingsHome({ go }: { go: (r: Route) => void }) {
-  const theme = useTheme()
   const backup = useBackupState()
   const [msg, setMsg] = useState<string>()
   const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
@@ -74,11 +71,10 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
       <Bar title="Impostazioni" back={() => go({ name: 'home' })} />
 
       <div className="list nav-list">
-        <NavItem title="Aspetto" detail={`Tema: ${THEMES.find((t) => t.id === theme)?.name}`} onClick={() => go({ name: 'settings', page: 'aspetto' })} />
+        <NavItem title="Aspetto" onClick={() => go({ name: 'settings', page: 'aspetto' })} />
         {/* Il promemoria si vede anche qui: un backup da fare non deve sparire dietro un livello. */}
         <NavItem
           title="Backup e ripristino"
-          detail={`Ultimo backup: ${describeBackupAge(backup)}`}
           due={counts != null && backupDue(backup, counts.photos)}
           onClick={() => go({ name: 'settings', page: 'backup' })}
         />
@@ -92,7 +88,7 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         <div><span className="k">Spazio occupato</span><b>{storage.usage != null ? fmtBytes(storage.usage) : '—'}</b></div>
         <div><span className="k">Protetto dalla pulizia automatica</span><b>{storage.persisted == null ? '—' : storage.persisted ? 'sì' : 'no'}</b></div>
       </div>
-      <p className="small">Le foto originali restano nella galleria del telefono: l'app conserva solo una miniatura per ciascuna.</p>
+      <p className="small">Le foto originali restano nella galleria del telefono, l'app conserva solo le miniature.</p>
 
       <h2 className="section-title">Versione</h2>
       <div className="list">
@@ -113,7 +109,6 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         </button>
       </div>
       {msg && <div className="note-box" style={{ marginTop: 10 }}>{msg}</div>}
-      <p className="small">Non serve quasi mai: l'app si aggiorna da sola quando la apri.</p>
     </div>
   )
 }
@@ -161,7 +156,6 @@ function AppearancePage({ go }: { go: (r: Route) => void }) {
           <input type="color" value={countryColor} onChange={(e) => setCountryColor(e.target.value)} />
         </label>
       </div>
-      <p className="small">Temi e colori valgono solo su questo dispositivo e non finiscono negli export.</p>
     </div>
   )
 }
@@ -193,14 +187,15 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
 
       <h2 className="section-title">Backup</h2>
       <p className="small">
-        Ultimo backup completo: <b>{describeBackupAge(backup)}</b>. I viaggi esistono solo su questo telefono: conserva il file fuori (File, iCloud, computer).
+        Ultimo backup completo: <b>{describeBackupAge(backup)}</b>.
+        <br />I viaggi esistono solo su questo telefono, ricorda di conservarli.
       </p>
-      <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup fatto: conservalo fuori dal telefono (File, iCloud, computer).' : undefined))}>
+      <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup esportato con successo!' : undefined))}>
         Esporta tutti i viaggi
       </button>
 
       <h2 className="section-title">Esporta alcuni viaggi</h2>
-      <p className="small">Per salvare solo qualche viaggio o passarlo a qualcuno (per esempio da importare sul suo computer). Più viaggi finiscono in un unico file.</p>
+      <p className="small">Per salvare solo qualche viaggio o passarlo a qualcuno. Più viaggi finiscono in un unico file.</p>
       <button className="btn ghost" disabled={working || !trips} onClick={() => setChoosing(true)}>
         Scegli i viaggi da esportare
       </button>
@@ -209,20 +204,26 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
           onClose={() => setChoosing(false)}
           onExport={(ids) => {
             setChoosing(false)
-            void run(async () => ((await deliverFile(await exportTrips(ids))) ? `Esportat${ids.length === 1 ? 'o 1 viaggio' : `i ${ids.length} viaggi`}.` : undefined))
+            const label = ids.length === 1 ? '1 viaggio' : `${ids.length} viaggi`
+            void run(async () => ((await shareExport(label, (p) => exportTrips(ids, p))) ? `Esportat${ids.length === 1 ? 'o 1 viaggio' : `i ${ids.length} viaggi`}.` : undefined))
           }}
         />
       )}
 
+      {/* Riguarda gli export, quindi sta sopra il ripristino (scelta dell'utente). */}
+      <p className="small">Gli export contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
+
       <h2 className="section-title">Ripristino</h2>
-      <p className="small">Si importa un singolo viaggio o un backup completo, anche fatto su un altro telefono o su un computer. Se un viaggio c'è già, si aggiorna senza doppioni; niente viene cancellato.</p>
+      <p className="small">Puoi importare un singolo viaggio o un backup completo, anche fatto su un altro telefono. Se un viaggio c'è già, si aggiorna.</p>
       <label className="btn ghost" aria-disabled={working}>
         Importa un viaggio o un backup
         <input
           ref={input}
           className="hidden-input"
           type="file"
-          accept="application/json,.json"
+          // ⚠️ Nessun filtro: con un'estensione sconosciuta come «.mytrip» il
+          // selettore di iOS renderebbe i file grigi e non sceglibili. L'app
+          // controlla da sé che il file sia di MyTrip.
           onChange={(e) => {
             const file = e.target.files?.[0]
             e.target.value = ''
@@ -237,7 +238,6 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
         />
       </label>
       {msg && <div className="note-box" style={{ marginTop: 12 }}>{msg}</div>}
-      <p className="small">Gli export contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
     </div>
   )
 }

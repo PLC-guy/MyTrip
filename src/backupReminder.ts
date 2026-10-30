@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { db } from './db'
-import { deliverFile, exportBackup } from './backup'
+import { exportBackup } from './backup'
+import { shareExport } from './exportFlow'
 
 /**
  * PROMEMORIA DI BACKUP
@@ -93,7 +94,7 @@ export function snoozeBackup(): void {
 /** Esporta tutti i viaggi; se il file è stato consegnato, il backup risulta fatto. */
 export async function runBackup(): Promise<boolean> {
   const photos = await db.photos.count()
-  const delivered = await deliverFile(await exportBackup())
+  const delivered = await shareExport('Backup completo', exportBackup)
   if (delivered) write({ at: new Date().toISOString(), photos })
   return delivered
 }

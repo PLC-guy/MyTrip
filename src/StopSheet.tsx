@@ -30,6 +30,12 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
   const [renaming, setRenaming] = useState<string>()
   const [ask, setAsk] = useState<Ask>()
   const [msg, setMsg] = useState<string>()
+  /**
+   * «Modifica tappa»: forbici, cestino e «Unisci» restano nascosti finché non si
+   * chiedono (richiesta dell'utente, 30/10/2026): sono azioni rare e pesanti,
+   * non devono stare sotto il pollice a ogni apertura.
+   */
+  const [editing, setEditing] = useState(false)
 
   const saveNote = () => {
     const clean = note.trim()
@@ -104,22 +110,24 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
                 {p.alt != null ? ` · ${p.alt} m` : ''}
               </span>
               <span>
-                {/* La foto del piatto: da qui si sceglie il locale, cercando attorno a questa foto. */}
-                <button
-                  className={`meal-icon${stop.meal?.photoId === p.id ? ' on' : ''}`}
-                  aria-label="Ho mangiato qui: scegli il locale"
-                  onClick={() => setAsk({ kind: 'meal', photo: p })}
-                >
-                  🍽️
-                </button>
-                {i > 0 && (
+                {/* La foto del piatto: da qui si sceglie il locale, cercando attorno a
+                    questa foto. Un locale per tappa: scelto quello, le 🍽️ spariscono
+                    e tornano se lo si toglie. */}
+                {!editing && !stop.meal && (
+                  <button className="meal-icon" aria-label="Ho mangiato qui: scegli il locale" onClick={() => setAsk({ kind: 'meal', photo: p })}>
+                    🍽️
+                  </button>
+                )}
+                {editing && i > 0 && (
                   <button aria-label="Dividi la tappa da questa foto" onClick={() => setAsk({ kind: 'split', photo: p })}>
                     <IconScissors />
                   </button>
                 )}
-                <button aria-label="Togli questa foto" onClick={() => setAsk({ kind: 'delete', photo: p })}>
-                  <IconTrash />
-                </button>
+                {editing && (
+                  <button aria-label="Togli questa foto" onClick={() => setAsk({ kind: 'delete', photo: p })}>
+                    <IconTrash />
+                  </button>
+                )}
               </span>
             </figcaption>
           </figure>
@@ -176,7 +184,15 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
           </button>
         </div>
         {msg && <p className="small">{msg}</p>}
-        {(prev || next) && (
+        <button className={`btn ${editing ? '' : 'ghost '}small-btn`} onClick={() => setEditing(!editing)}>
+          {editing ? 'Fine modifica' : '✎ Modifica tappa'}
+        </button>
+        {editing && (
+          <p className="small" style={{ margin: 0 }}>
+            Sotto ogni foto: ✂ divide la tappa da quella foto in poi, il cestino la toglie dall'app (resta in galleria).
+          </p>
+        )}
+        {editing && (prev || next) && (
           <div className="row">
             {prev && (
               <button className="btn ghost small-btn" onClick={() => setAsk({ kind: 'merge', other: prev, into: 'prev' })}>

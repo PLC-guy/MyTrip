@@ -1,19 +1,19 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, deleteTrip, stopTitle, type Photo, type Stop, type TripKind } from './db'
+import { db, deleteTrip, stopTitle, TRIP_COLORS, type Photo, type Stop, type TripKind } from './db'
 import KindPicker from './KindPicker'
-import { dayOf, fmtDayLong, fmtDayShort, fmtDuration, fmtRange, fmtTime, plural } from './format'
+import { dayOf, daySpan, fmtDayLong, fmtDayShort, fmtDuration, fmtRange, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
 import { IconBack, IconMore, IconPhotos, IconPlay, IconStop } from './icons'
 import { importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
 import MapView, { type MapLine, type MapPin } from './MapView'
-import Sheet from './Sheet'
+import Sheet, { SWAP_MS } from './Sheet'
 import StopSheet from './StopSheet'
 import DayNav from './DayNav'
 import CoverSheet from './CoverSheet'
 import { thumbUrl } from './thumbUrl'
 import { setBusy } from './update'
-import { deliverFile } from './backup'
+import { shareExport } from './exportFlow'
 import { exportKml } from './kml'
 import { fmtKm, tripStats } from './stats'
 import { TRANSPORTS, transportOf } from './transport'
@@ -30,6 +30,7 @@ type Panel =
   | { kind: 'import'; progress: ImportProgress; report?: ImportReport; timing?: { deliverMs?: number; readMs: number } }
   | { kind: 'menu' }
   | { kind: 'cover' }
+  | { kind: 'color' }
   | { kind: 'rename'; value: string; type: TripKind }
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
@@ -43,6 +44,22 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   /** Quando si è aperto il selettore: per sapere quanto ha impiegato iOS a consegnare le foto. */
   const pickedAt = useRef<number | undefined>(undefined)
   const [panel, setPanel] = useState<Panel>({ kind: 'none' })
+  /**
+   * Scambio animato fra due fogli (richiesta dell'utente, 30/10/2026): dal menu ⋯
+   * alla copertina o al colore il menu scende e l'altro sale; scelto, scende e il
+   * menu risale. `leaving` = il foglio attuale sta uscendo; `swapped` = quello
+   * nuovo entra salendo da sotto.
+   */
+  const [leaving, setLeaving] = useState(false)
+  const [swapped, setSwapped] = useState(false)
+  const swapTo = (next: Panel) => {
+    setLeaving(true)
+    setTimeout(() => {
+      setLeaving(false)
+      setSwapped(true)
+      setPanel(next)
+    }, SWAP_MS)
+  }
   const [openStop, setOpenStop] = useState<string | undefined>(initialStop)
   const [focus, setFocus] = useState<string | undefined>(initialStop)
   const [error, setError] = useState<string>()
@@ -102,7 +119,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
    * 0.10.0, non convincevano.
    */
   const [dayFilter, setDayFilter] = useState<string | null>(null)
-  const dayNum = useMemo(() => new Map(days.map((d, i) => [d.day, i + 1])), [days])
+  /**
+   * Numero del giorno contato sul CALENDARIO dal primo giorno del viaggio, non
+   * fra i soli giorni con foto: se il 2 non ci sono foto, il 3 resta «Giorno 3»
+   * (richiesta dell'utente, 30/10/2026). Così torna con i «Giorni» delle schede.
+   */
+  const dayNum = useMemo(() => new Map(days.map((d) => [d.day, daySpan(days[0].day, d.day)])), [days])
   const showDay = (s: Stop) => dayFilter === null || dayOf(s.first) === dayFilter
   const pins = useMemo<MapPin[]>(
     () =>
@@ -148,7 +170,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     )
   }
   const trip = data.trip
-  const dayNumber = (day: string) => days.findIndex((d) => d.day === day) + 1
+  const dayNumber = (day: string) => dayNum.get(day) ?? 1
 
   async function onFiles(list: FileList | null) {
     const files = Array.from(list ?? [])
@@ -186,7 +208,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   async function deliver(make: () => Promise<File>) {
     setPanel({ kind: 'none' })
     try {
-      await deliverFile(await make())
+      await shareExport('File per Google Maps', make)
     } catch (e) {
       setError(`Export non riuscito: ${e instanceof Error ? e.message : String(e)}`)
     }
@@ -212,7 +234,10 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <IconBack />
         </button>
         <h1>{trip.name}</h1>
-        <button className="icon-btn" onClick={() => setPanel({ kind: 'menu' })} aria-label="Altro">
+        <button className="icon-btn" onClick={() => {
+            setSwapped(false)
+            setPanel({ kind: 'menu' })
+          }} aria-label="Altro">
           <IconMore />
         </button>
       </div>
@@ -251,9 +276,9 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               <button type="button" role="radio" aria-checked={dayFilter === null} className={dayFilter === null ? 'on' : ''} onClick={() => setDayFilter(null)}>
                 Tutti
               </button>
-              {days.map((d, i) => (
+              {days.map((d) => (
                 <button key={d.day} type="button" role="radio" aria-checked={dayFilter === d.day} className={dayFilter === d.day ? 'on' : ''} title={fmtDayShort(d.stops[0].first)} onClick={() => { setPlay(null); setDayFilter(d.day) }}>
-                  G{i + 1}
+                  G{dayNumber(d.day)}
                 </button>
               ))}
             </div>
@@ -346,10 +371,10 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
 
       {days.length > 0 && <h2 className="section-title">Le tappe</h2>}
       <div className="timeline">
-      {days.map((d, i) => (
+      {days.map((d) => (
         <section key={d.day}>
           <div className="day">
-            <b>Giorno {i + 1}</b>
+            <b>Giorno {dayNumber(d.day)}</b>
             <span>{fmtDayLong(d.stops[0].first)}</span>
           </div>
           <button className="diary" onClick={() => setPanel({ kind: 'diary', day: d.day, value: trip.diary?.[d.day] ?? '' })}>
@@ -570,11 +595,14 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       )}
 
       {panel.kind === 'menu' && (
-        <Sheet onClose={() => setPanel({ kind: 'none' })}>
+        <Sheet onClose={() => setPanel({ kind: 'none' })} leaving={leaving} swap={swapped}>
           <h2>{trip.name}</h2>
           <div className="stack">
             <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
-            <button className="btn ghost" onClick={() => setPanel({ kind: 'cover' })}>Scegli la copertina</button>
+            <button className="btn ghost" onClick={() => swapTo({ kind: 'cover' })}>Scegli la copertina</button>
+            <button className="btn ghost" onClick={() => swapTo({ kind: 'color' })}>
+              <span className="dot" style={{ background: trip.color, width: 12, height: 12, margin: 0 }} /> Colore della traccia
+            </button>
             <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps (KML)</button>
             <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Elimina il viaggio</button>
           </div>
@@ -585,7 +613,32 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
         </Sheet>
       )}
 
-      {panel.kind === 'cover' && <CoverSheet trip={trip} onClose={() => setPanel({ kind: 'none' })} />}
+      {panel.kind === 'cover' && <CoverSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
+
+      {panel.kind === 'color' && (
+        // Colore della traccia del viaggio, scelto dopo la creazione (richiesta dell'utente).
+        <Sheet onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped}>
+          <h2>Colore della traccia</h2>
+          <div className="swatches" style={{ marginTop: 14 }}>
+            {TRIP_COLORS.map((c) => (
+              <button
+                key={c}
+                className={`swatch${trip.color.toLowerCase() === c.toLowerCase() ? ' on' : ''}`}
+                style={{ background: c }}
+                aria-label={`Colore ${c}`}
+                onClick={() => {
+                  void db.trips.update(id, { color: c })
+                  swapTo({ kind: 'menu' })
+                }}
+              />
+            ))}
+            {/* Colore libero: il selettore di sistema dell'iPhone. */}
+            <label className={`swatch swatch-custom${TRIP_COLORS.some((c) => c.toLowerCase() === trip.color.toLowerCase()) ? '' : ' on'}`} aria-label="Scegli un altro colore">
+              <input type="color" value={trip.color} onChange={(e) => void db.trips.update(id, { color: e.target.value })} />
+            </label>
+          </div>
+        </Sheet>
+      )}
 
       {panel.kind === 'rename' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })}>

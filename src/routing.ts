@@ -76,9 +76,31 @@ function simplify(pts: [number, number][]): [number, number][] {
   return pts.filter((_, i) => keep[i]).map(([la, lo]) => [Math.round(la * 1e5) / 1e5, Math.round(lo * 1e5) / 1e5])
 }
 
-type Outcome = Pick<Route, 'status' | 'coords' | 'km' | 'minutes' | 'ferry'> | 'retry'
+type Outcome = Pick<Route, 'status' | 'coords' | 'km' | 'minutes' | 'ferry' | 'via'> | 'retry'
+
+/**
+ * Versione delle regole dei percorsi. ⚠️ Dalla 2 (30/10/2026): se in auto, in
+ * scooter o in bus non c'è strada, si riprova in bicicletta. Nel Vietnam la
+ * strada per il nord di Phu Quoc è nei dati di OpenStreetMap ma vietata ai
+ * veicoli a motore (errore 442 «nessun percorso» in auto e in scooter, 24 km in
+ * bici): l'itinerario finiva in linea dritta pur esistendo la strada. La bici
+ * usa le stesse strade, quindi la linea segue il tragitto vero; il tempo di
+ * guida invece non si conosce (`minutes` vuoto: niente avvisi sui tempi).
+ * I percorsi «nessuna strada» salvati con regole più vecchie si richiedono una volta.
+ */
+export const ROUTE_V = 2
+const MOTOR = new Set(['auto', 'motor_scooter', 'bus'])
 
 async function ask(from: Stop, to: Stop, profile: string): Promise<Outcome> {
+  const first = await askOnce(from, to, profile)
+  if (first === 'retry' || first.status !== 'none' || !MOTOR.has(profile)) return first
+  await pause(PAUSE_MS)
+  const bike = await askOnce(from, to, 'bicycle')
+  if (bike === 'retry' || bike.status !== 'ok') return first
+  return { ...bike, minutes: undefined, via: 'bicycle' }
+}
+
+async function askOnce(from: Stop, to: Stop, profile: string): Promise<Outcome> {
   const body = {
     locations: [
       { lat: from.lat, lon: from.lon },
@@ -130,13 +152,14 @@ export async function routesPending(tripId?: string): Promise<void> {
         if (!profile) continue
         const id = routeId(to.id, profile)
         const saved = await db.routes.get(id)
-        if (saved && routeIsFresh(saved, from, to)) continue
+        // Già chiesto e ancora valido; i «nessuna strada» vecchi si riprovano con le regole nuove.
+        if (saved && routeIsFresh(saved, from, to) && !(saved.status === 'none' && (saved.v ?? 1) < ROUTE_V)) continue
         const outcome = await ask(from, to, profile)
         if (outcome === 'retry') {
           complete = false
           break outer
         }
-        await db.routes.put({ id, toStopId: to.id, tripId: trip.id, profile, fromLat: from.lat, fromLon: from.lon, toLat: to.lat, toLon: to.lon, at: Date.now(), ...outcome })
+        await db.routes.put({ id, toStopId: to.id, tripId: trip.id, profile, fromLat: from.lat, fromLon: from.lon, toLat: to.lat, toLon: to.lon, at: Date.now(), v: ROUTE_V, ...outcome })
         await pause(PAUSE_MS)
       }
     }

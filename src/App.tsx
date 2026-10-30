@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import HomeScreen from './HomeScreen'
 import TripScreen from './TripScreen'
 import SettingsScreen from './SettingsScreen'
@@ -7,6 +8,7 @@ import MealsScreen from './MealsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
+import ExportSheet from './ExportSheet'
 import type { SettingsPage } from './SettingsScreen'
 import InstallGate from './InstallGate'
 import { readEnvironment } from './install'
@@ -68,6 +70,18 @@ function writeRoute(r: Route): string {
   return '#/'
 }
 
+/**
+ * TRANSIZIONI FRA LE PAGINE (richiesta dell'utente, 30/10/2026). Le pagine sono
+ * disposte in fila: a sinistra della Home Paesi, Locali, Speciali e Cerca; a
+ * destra i viaggi e le Impostazioni. Andando verso destra la pagina vecchia
+ * scivola a sinistra e la nuova entra da destra; tornando, il contrario.
+ * Con la View Transitions API (Safari 18+): dove manca, il cambio è immediato
+ * come prima. Lo «swipe indietro» di iOS non passa di qui: resta il suo.
+ */
+const SIDE: Record<Route['name'], number> = { countries: -1, meals: -1, stars: -1, search: -1, home: 0, trip: 1, settings: 1 }
+/** Pagine interne delle Impostazioni: un passo più a destra delle Impostazioni stesse. */
+const place = (r: Route) => SIDE[r.name] + (r.name === 'settings' && r.page ? 0.5 : 0)
+
 export default function App() {
   const [route, setRoute] = useState<Route>(readRoute)
   const [updateReady, setUpdateReady] = useState(false)
@@ -95,7 +109,22 @@ export default function App() {
   }, [screenKey])
 
   const go = (r: Route) => {
-    location.hash = writeRoute(r)
+    const from = place(route)
+    const to = place(r)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!document.startViewTransition || from === to || reduce) {
+      location.hash = writeRoute(r)
+      return
+    }
+    document.documentElement.dataset.nav = to > from ? 'forward' : 'back'
+    const t = document.startViewTransition(() => {
+      // La pagina nuova va disegnata (e portata in cima) DENTRO la transizione,
+      // perché l'istantanea «dopo» sia quella giusta.
+      flushSync(() => setRoute(r))
+      window.scrollTo(0, 0)
+      history.pushState(null, '', writeRoute(r))
+    })
+    void t.finished.finally(() => delete document.documentElement.dataset.nav)
   }
 
   if (GUIDE !== null) return <InstallGate force={GUIDE} />
@@ -103,6 +132,8 @@ export default function App() {
   return (
     <>
       <div className="statusbar-bg" />
+      {/* Avanzamento e «Condividi» degli export, da qualsiasi schermata. */}
+      <ExportSheet />
       {updateReady && (
         <div className="banner">
           <button className="btn" onClick={() => void applyUpdate()}>
