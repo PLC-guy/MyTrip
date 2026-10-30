@@ -1,3 +1,5 @@
+import { canvasToJpeg } from './thumb'
+
 /**
  * MINIATURE PER GLI EXPORT DA CONDIVIDERE (scelta dell'utente, 30/10/2026)
  *
@@ -7,9 +9,7 @@
  * scendono a SHARE_MAX px: Vietnam, 267 foto, da 9,4 a ~2,6 MB. Il backup e le
  * foto sul telefono restano come sono.
  *
- * ⚠️ Codificatore mozjpeg (WebAssembly, @jsquash/jpeg) e non il JPEG del canvas
- * di Safari, che a parità di qualità pesa circa una volta e mezza di più. Si
- * carica solo qui, al primo export; se non si carica si ripiega sul canvas.
+ * Codificatore mozjpeg come le miniature (canvasToJpeg in thumb.ts).
  */
 const SHARE_MAX = 320
 const SHARE_QUALITY = 55
@@ -26,15 +26,5 @@ export async function shareThumb(thumb: Blob): Promise<Blob> {
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(bmp, 0, 0, width, height)
   bmp.close()
-  try {
-    const { default: encode } = await import('@jsquash/jpeg/encode')
-    const out = await encode(ctx.getImageData(0, 0, width, height), { quality: SHARE_QUALITY })
-    return new Blob([out], { type: 'image/jpeg' })
-  } catch {
-    return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('miniatura non creata'))), 'image/jpeg', SHARE_QUALITY / 100))
-  } finally {
-    // Su iOS la memoria dei canvas è contata: si libera subito.
-    canvas.width = 0
-    canvas.height = 0
-  }
+  return canvasToJpeg(canvas, SHARE_QUALITY)
 }

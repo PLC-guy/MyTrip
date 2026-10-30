@@ -1,18 +1,41 @@
-/** Lato lungo della miniatura: nitida sulla mappa e nel dettaglio. */
-const MAX = 540
 /**
- * ⚠️ 0,62 e non più 0,78 (30/10/2026): il JPEG del canvas di Safari è poco
- * efficiente e a 0,78 le miniature pesavano ~97 KB (la stessa immagine fatta da
- * un codificatore migliore ne pesa 56). Gli export erano quindi enormi (40 MB per
- * 297 foto) e lenti da mandare su WhatsApp. Scelta dell'utente: miniature più
- * leggere, appena più morbide.
+ * MINIATURE DELLE FOTO (0.17.0, richiesta dell'utente del 30/10/2026)
+ *
+ * Lato lungo THUMB_MAX px: sull'iPhone la foto della tappa è larga ~345 punti,
+ * cioè ~1000 pixel veri. Fino alla 0.16 erano 540 px col JPEG del canvas di
+ * Safari a qualità 0,62: sul telefono a metà risoluzione, nel browser sgranate.
+ * (La lentezza degli export su WhatsApp che aveva portato a quei valori era il
+ * segnale debole del telefono, non il peso dei file.)
+ *
+ * ⚠️ Codificatore mozjpeg (WebAssembly, @jsquash/jpeg), non il JPEG del canvas:
+ * a parità di qualità pesa circa la metà. Se non si carica si ripiega sul canvas.
+ * Le foto importate prima si migliorano riaggiungendole dalla galleria
+ * (importPhotos.ts).
  */
-const QUALITY = 0.62
+export const THUMB_MAX = 1080
+const QUALITY = 75
 
 export interface Thumb {
   blob: Blob
   width: number
   height: number
+}
+
+/**
+ * JPEG da un canvas già disegnato, con mozjpeg (qualità 0–100). Libera il
+ * canvas: su iOS la memoria dei canvas è contata.
+ */
+export async function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  try {
+    const { default: encode } = await import('@jsquash/jpeg/encode')
+    const out = await encode(canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height), { quality })
+    return new Blob([out], { type: 'image/jpeg' })
+  } catch {
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('miniatura non creata'))), 'image/jpeg', quality / 100))
+  } finally {
+    canvas.width = 0
+    canvas.height = 0
+  }
 }
 
 /**
@@ -30,7 +53,7 @@ export async function makeThumb(file: Blob): Promise<Thumb> {
     source = await loadImage(file)
   }
 
-  const scale = Math.min(1, MAX / Math.max(source.width, source.height))
+  const scale = Math.min(1, THUMB_MAX / Math.max(source.width, source.height))
   const width = Math.max(1, Math.round(source.width * scale))
   const height = Math.max(1, Math.round(source.height * scale))
 
@@ -39,16 +62,11 @@ export async function makeThumb(file: Blob): Promise<Thumb> {
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('canvas non disponibile')
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(source, 0, 0, width, height)
   if ('close' in source) source.close()
 
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('miniatura non creata'))), 'image/jpeg', QUALITY),
-  )
-  // Su iOS la memoria dei canvas è contata: si libera subito.
-  canvas.width = 0
-  canvas.height = 0
-  return { blob, width, height }
+  return { blob: await canvasToJpeg(canvas, QUALITY), width, height }
 }
 
 function loadImage(file: Blob): Promise<HTMLImageElement> {
