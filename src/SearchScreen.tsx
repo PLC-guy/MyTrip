@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, stopTitle, type Stop, type Trip } from './db'
+import { db, followedTripIds, stopTitle, type Stop, type Trip } from './db'
 import { fmtDay, fmtDayLong } from './format'
 import { IconBack } from './icons'
 import type { Route } from './App'
@@ -10,7 +10,9 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 export default function SearchScreen({ go }: { go: (r: Route) => void }) {
   const [q, setQ] = useState('')
-  const all = useLiveQuery(async () => ({ trips: await db.trips.toArray(), stops: await db.stops.orderBy('start').reverse().toArray() }))
+  // I viaggi seguiti (di qualcun altro) si trovano, ma segnati con 👁.
+  const all = useLiveQuery(async () => ({ trips: await db.trips.toArray(), stops: await db.stops.orderBy('start').reverse().toArray(), followed: await followedTripIds() }))
+  const seen = (t: Trip) => (all?.followed.has(t.id) ? '👁 ' : '')
 
   const results = useMemo(() => {
     const needle = norm(q.trim())
@@ -52,7 +54,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
                   <span className="dot" style={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: t.color, marginRight: 6 }} />
-                  {t.name}
+                  {seen(t)}{t.name}
                 </span>
               </span>
             </button>
@@ -71,7 +73,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
                   {stopTitle(stop)}
                 </span>
                 <span className="meta" style={{ display: 'block' }}>
-                  {trip.name} · {fmtDay(stop.first)}
+                  {seen(trip)}{trip.name} · {fmtDay(stop.first)}
                   {stop.country ? ` · ${stop.country}` : ''}
                 </span>
                 {why && <span className="meta" style={{ display: 'block' }}>«{why}»</span>}
@@ -88,7 +90,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
             <button key={d.trip.id + d.day} className="stop compact" onClick={() => go({ name: 'trip', id: d.trip.id })}>
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
-                  {d.trip.name} · {fmtDayLong(d.day + 'T12:00:00')}
+                  {seen(d.trip)}{d.trip.name} · {fmtDayLong(d.day + 'T12:00:00')}
                 </span>
                 <span className="meta" style={{ display: 'block' }}>{d.text.length > 140 ? d.text.slice(0, 140) + '…' : d.text}</span>
               </span>

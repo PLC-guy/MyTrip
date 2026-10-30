@@ -79,6 +79,20 @@ export function describeBackupAge(state: BackupState): string {
   return `${age} giorni fa`
 }
 
+/**
+ * Foto che esistono solo su questo telefono, quelle che il promemoria conta:
+ * tutte, meno quelle dei viaggi seguiti ancora condivisi (si riscaricano dal
+ * server). Un viaggio seguito di cui chi viaggia ha smesso la condivisione
+ * (`Share.ended`) torna a contare: da lì in poi, senza backup, si perderebbe
+ * (osservazione dell'utente, 30/10/2026).
+ */
+export async function photosToKeep(): Promise<number> {
+  const live = (await db.shares.where('role').equals('follow').toArray()).filter((s) => !s.ended)
+  let n = await db.photos.count()
+  for (const s of live) n -= await db.photos.where('tripId').equals(s.tripId).count()
+  return n
+}
+
 export function backupDue(state: BackupState, photos: number, now = new Date()): boolean {
   if (photos === 0) return false
   if (state.snoozeUntil && new Date(state.snoozeUntil) > now) return false
@@ -93,7 +107,7 @@ export function snoozeBackup(): void {
 
 /** Esporta tutti i viaggi; se il file è stato consegnato, il backup risulta fatto. */
 export async function runBackup(): Promise<boolean> {
-  const photos = await db.photos.count()
+  const photos = await photosToKeep()
   const delivered = await shareExport('Backup completo', exportBackup)
   if (delivered) write({ at: new Date().toISOString(), photos })
   return delivered

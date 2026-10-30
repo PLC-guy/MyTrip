@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, stopTitle, type Photo, type Stop, type Trip } from './db'
+import { db, followedTripIds, stopTitle, type Photo, type Stop, type Trip } from './db'
 import { fmtDay, plural } from './format'
 import { IconBack } from './icons'
 import MapView, { type MapPin } from './MapView'
@@ -27,7 +27,8 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
 
   const rows = useLiveQuery(async (): Promise<Row[]> => {
     const trips = new Map((await db.trips.toArray()).map((t) => [t.id, t]))
-    const meals = (await db.stops.toArray()).filter((s) => s.meal).sort((a, b) => b.start - a.start)
+    const skip = await followedTripIds()
+    const meals = (await db.stops.toArray()).filter((s) => s.meal && !skip.has(s.tripId)).sort((a, b) => b.start - a.start)
     const out: Row[] = []
     for (const stop of meals) {
       const trip = trips.get(stop.tripId)

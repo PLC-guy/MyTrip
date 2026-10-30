@@ -4,7 +4,7 @@ import { db } from './db'
 import { exportTrips, importFile } from './backup'
 import { shareExport } from './exportFlow'
 import Sheet from './Sheet'
-import { backupDue, describeBackupAge, runBackup, useBackupState } from './backupReminder'
+import { backupDue, describeBackupAge, photosToKeep, runBackup, useBackupState } from './backupReminder'
 import { fmtBytes, fmtRange, plural } from './format'
 import { geocodePending } from './geocode'
 import { routesPending } from './routing'
@@ -12,6 +12,9 @@ import { IconBack } from './icons'
 import { applyUpdate, buildLabel, versionLabel } from './update'
 import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
 import { THEMES, setTheme, useTheme } from './theme'
+import { setProfile, useProfile } from './profile'
+import { pushAll } from './sync'
+import { refreshThumbs, type RefreshReport } from './testTools'
 import type { Route } from './App'
 
 /**
@@ -23,9 +26,10 @@ import type { Route } from './App'
  * 27/10/2026. Le pagine stanno nell'indirizzo (#/impostazioni/aspetto), così
  * «indietro» e un aggiornamento automatico riportano dove si era.
  */
-export type SettingsPage = 'aspetto' | 'backup'
+export type SettingsPage = 'viaggiatore' | 'aspetto' | 'backup'
 
 export default function SettingsScreen({ page, go }: { page?: SettingsPage; go: (r: Route) => void }) {
+  if (page === 'viaggiatore') return <TravelerPage go={go} />
   if (page === 'aspetto') return <AppearancePage go={go} />
   if (page === 'backup') return <BackupPage go={go} />
   return <SettingsHome go={go} />
@@ -57,6 +61,7 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
   const [msg, setMsg] = useState<string>()
   const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
   const counts = useLiveQuery(async () => ({ trips: await db.trips.count(), stops: await db.stops.count(), photos: await db.photos.count() }))
+  const keep = useLiveQuery(photosToKeep)
 
   useEffect(() => {
     void (async () => {
@@ -71,11 +76,12 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
       <Bar title="Impostazioni" back={() => go({ name: 'home' })} />
 
       <div className="list nav-list">
+        <NavItem title="Il viaggiatore" onClick={() => go({ name: 'settings', page: 'viaggiatore' })} />
         <NavItem title="Aspetto" onClick={() => go({ name: 'settings', page: 'aspetto' })} />
         {/* Il promemoria si vede anche qui: un backup da fare non deve sparire dietro un livello. */}
         <NavItem
           title="Backup e ripristino"
-          due={counts != null && backupDue(backup, counts.photos)}
+          due={keep != null && backupDue(backup, keep)}
           onClick={() => go({ name: 'settings', page: 'backup' })}
         />
       </div>
@@ -109,6 +115,99 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         </button>
       </div>
       {msg && <div className="note-box" style={{ marginTop: 10 }}>{msg}</div>}
+
+      <TestTools />
+    </div>
+  )
+}
+
+/** 🧪 Strumento di prova, DA TOGLIERE: vedi testTools.ts. */
+function TestTools() {
+  const input = useRef<HTMLInputElement>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number }>()
+  const [report, setReport] = useState<RefreshReport>()
+
+  async function run(files: File[]) {
+    if (!files.length) return
+    setReport(undefined)
+    setProgress({ done: 0, total: files.length })
+    try {
+      setReport(await refreshThumbs(files, (done, total) => setProgress({ done, total })))
+    } finally {
+      setProgress(undefined)
+    }
+  }
+
+  return (
+    <div className="test-tools">
+      <h2 className="section-title">🧪 Prove · temporaneo</h2>
+      <p className="small">
+        Strumento di prova, verrà tolto. Scegli dalla galleria le foto già presenti nell'app: le loro miniature si rifanno dall'originale. Le foto che l'app non ha vengono scartate e non entrano.
+      </p>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])]
+          e.target.value = ''
+          void run(files)
+        }}
+      />
+      <button className="btn ghost" disabled={!!progress} onClick={() => input.current?.click()}>
+        {progress ? `Rifaccio le miniature… ${progress.done} di ${progress.total}` : '🧪 Rifai le miniature dalla galleria'}
+      </button>
+      {report && (
+        <div className="list" style={{ marginTop: 10 }}>
+          <div><span className="k">Già presenti, ora più nitide</span><b>{report.updated}</b></div>
+          <div><span className="k">Non presenti, scartate</span><b>{report.skipped}</b></div>
+          <div><span className="k">Senza data o posizione, illeggibili</span><b>{report.unreadable}</b></div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Il nome di chi usa l'app, per chi segue i suoi viaggi condivisi (profile.ts). */
+function TravelerPage({ go }: { go: (r: Route) => void }) {
+  const profile = useProfile()
+  const [name, setName] = useState(profile.name ?? '')
+  const [saved, setSaved] = useState(false)
+  const changed = name.trim() !== (profile.name ?? '')
+
+  return (
+    <div className="page">
+      <Bar title="Il viaggiatore" back={() => go({ name: 'settings' })} />
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setProfile({ name })
+          setSaved(true)
+          // I viaggi già condivisi ricevono il nome nuovo.
+          void pushAll()
+        }}
+      >
+        <label className="small" htmlFor="traveler-name">Il tuo nome</label>
+        <input
+          id="traveler-name"
+          className="field"
+          placeholder="Es. Alex"
+          maxLength={40}
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            setSaved(false)
+          }}
+        />
+        <button className="btn" type="submit" disabled={!changed}>Salva</button>
+      </form>
+      {saved && <p className="small">Salvato.</p>}
+      <p className="small">
+        Chi segue i viaggi che condividi in diretta li vede come «Viaggio di {name.trim() || 'Alex'}». Il nome parte solo con i viaggi condivisi, cifrato come il resto del viaggio.
+      </p>
     </div>
   )
 }

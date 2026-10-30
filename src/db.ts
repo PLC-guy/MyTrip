@@ -185,6 +185,14 @@ export interface Share {
   at?: number
   /** Ultimo errore, da mostrare; sparisce al primo aggiornamento riuscito. */
   error?: string
+  /** Solo follow: nome di chi viaggia (profile.ts), arrivato cifrato con l'indice. */
+  by?: string
+  /**
+   * Solo follow: quando ci si è accorti che chi viaggia ha smesso di condividere.
+   * Da lì il viaggio esiste solo su questo telefono e conta per il promemoria
+   * del backup (backupReminder.ts).
+   */
+  ended?: number
   /**
    * Solo follow: notifiche scelte da chi segue. `each` = a ogni novità (al più
    * una ogni 15 minuti), `daily` = un riepilogo al giorno all'ora `hour`.
@@ -235,6 +243,15 @@ export async function recolorTrips(): Promise<void> {
 
 export function newId(): string {
   return crypto.randomUUID()
+}
+
+/**
+ * Viaggi seguiti (di qualcun altro, sync.ts): restano fuori da Paesi, Locali e
+ * Posti speciali, che raccontano i viaggi di chi usa l'app (richiesta
+ * dell'utente, 30/10/2026). Cerca li trova ma li segna.
+ */
+export async function followedTripIds(): Promise<Set<string>> {
+  return new Set((await db.shares.where('role').equals('follow').toArray()).map((s) => s.tripId))
 }
 
 /** Cancella un viaggio con tutte le sue tappe e foto. */

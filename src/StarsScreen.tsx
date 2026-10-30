@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, stopTitle, type Photo, type Stop, type Trip } from './db'
+import { db, followedTripIds, stopTitle, type Photo, type Stop, type Trip } from './db'
 import { fmtDay } from './format'
 import { IconBack } from './icons'
 import MapView, { type MapPin } from './MapView'
@@ -17,7 +17,8 @@ interface Row {
 export default function StarsScreen({ go }: { go: (r: Route) => void }) {
   const rows = useLiveQuery(async (): Promise<Row[]> => {
     const trips = new Map((await db.trips.toArray()).map((t) => [t.id, t]))
-    const stars = (await db.stops.toArray()).filter((s) => s.star).sort((a, b) => b.start - a.start)
+    const skip = await followedTripIds()
+    const stars = (await db.stops.toArray()).filter((s) => s.star && !skip.has(s.tripId)).sort((a, b) => b.start - a.start)
     const out: Row[] = []
     for (const stop of stars) {
       const trip = trips.get(stop.tripId)

@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { decrypt, encrypt, fromB64url, randomB64url, sha256, toB64url } from './crypt'
 import { forgetThumbs } from './thumbUrl'
+import { getProfile } from './profile'
 
 /**
  * VIAGGI CONDIVISI IN DIRETTA (richiesta dell'utente, 30/10/2026)
@@ -31,6 +32,8 @@ interface Index {
   stops: Stop[]
   routes: Route[]
   photos: PhotoMeta[]
+  /** Nome di chi viaggia (Impostazioni › Il viaggiatore), facoltativo. */
+  by?: string
 }
 
 /** Quanto l'avviso per chi segue aspetta i nomi dei luoghi delle foto nuove. */
@@ -200,6 +203,7 @@ async function pushOnce(tripId: string): Promise<void> {
       stops,
       routes,
       photos: photos.map((p) => ({ ...p, thumb: undefined, size: p.thumb.size })),
+      by: getProfile().name,
     }
     const json = JSON.stringify(index)
     const v = await sha256(json)
@@ -295,20 +299,24 @@ export function pullShare(tripId: string): Promise<void> {
   return single(tripId, () => pullOnce(tripId))
 }
 
+const ENDED = 'Il viaggio non è più condiviso: resta quello che hai già scaricato.'
+
 async function pullOnce(tripId: string): Promise<void> {
   const share = await db.shares.get(tripId)
   if (share?.role !== 'follow') return
+  // Chi viaggia ha smesso di condividere: da qui il viaggio vive solo su questo telefono.
+  const ended = () => db.shares.update(tripId, { ended: share.ended ?? Date.now(), error: ENDED })
   try {
     const r = await call('GET', '/v', share)
-    if (!r) throw new Error('Il viaggio non è più condiviso: resta quello che hai già scaricato.')
+    if (!r) return void (await ended())
     const v = await r.text()
     if (v === share.v) {
-      if (share.error) await db.shares.update(tripId, { error: undefined })
+      if (share.error || share.ended) await db.shares.update(tripId, { error: undefined, ended: undefined })
       return
     }
     setStatus(tripId, { busy: true })
     const index = await getIndex(share)
-    if (!index) throw new Error('Il viaggio non è più condiviso: resta quello che hai già scaricato.')
+    if (!index) return void (await ended())
     if (index.trip.id !== tripId) throw new Error('Il link non corrisponde a questo viaggio.')
 
     // Prima la struttura (tappe, percorsi), così il viaggio si vede subito;
@@ -366,7 +374,7 @@ async function pullOnce(tripId: string): Promise<void> {
     }
     // Versione segnata solo a lavoro finito: se qualcosa è mancato, si riprova al prossimo giro.
     const complete = (await db.photos.where('tripId').equals(tripId).count()) === index.photos.length
-    await db.shares.update(tripId, { v: complete ? v : undefined, at: Date.now(), error: undefined })
+    await db.shares.update(tripId, { v: complete ? v : undefined, at: Date.now(), error: undefined, ended: undefined, by: index.by })
   } catch (e) {
     await db.shares.update(tripId, { error: e instanceof Error ? e.message : String(e) })
   }
@@ -432,7 +440,8 @@ export async function leaveShare(tripId: string): Promise<void> {
 const PULL_EVERY_MS = 5 * 60_000
 const PUSH_DELAY_MS = 4000
 
-async function pushAll(): Promise<void> {
+/** Carica le novità di tutti i viaggi condivisi (anche dopo un cambio di nome del viaggiatore). */
+export async function pushAll(): Promise<void> {
   for (const s of await db.shares.where('role').equals('owner').toArray()) await pushShare(s.tripId)
 }
 

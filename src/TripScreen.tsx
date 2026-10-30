@@ -304,7 +304,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           </p>
           {share && (
             <p className="small share-line">
-              {readOnly ? '👁 Segui questo viaggio' : '📡 Condiviso in diretta'}
+              {readOnly ? (share.by ? `👁 Viaggio di ${share.by}` : '👁 Segui questo viaggio') : '📡 Condiviso in diretta'}
               {sync.busy
                 ? readOnly
                   ? ' · scarico le novità…'
@@ -607,7 +607,6 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               <div className="list" style={{ marginTop: 14 }}>
                 <div><span className="k">Aggiunte</span><b>{panel.report.added}</b></div>
                 <div><span className="k">Già presenti</span><b>{panel.report.duplicates}</b></div>
-                {panel.report.improved > 0 && <div><span className="k">Già presenti, ora più nitide</span><b>{panel.report.improved}</b></div>}
                 <div><span className="k">Scartate</span><b>{panel.report.rejected.length}</b></div>
               </div>
               {panel.timing && (

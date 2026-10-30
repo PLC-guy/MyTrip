@@ -1,7 +1,6 @@
 import { db, newId, stopSummary, toStored, type Photo, type Stop } from './db'
 import { photoKey, readMeta } from './exif'
-import { makeThumb, THUMB_MAX } from './thumb'
-import { forgetThumbs } from './thumbUrl'
+import { makeThumb } from './thumb'
 
 /**
  * Due foto appartengono alla stessa tappa se sono state scattate entro questa
@@ -22,8 +21,6 @@ export interface ImportProgress {
 export interface ImportReport {
   added: number
   duplicates: number
-  /** Già presenti con una miniatura più piccola, ora rifatta dall'originale (0.17.0). */
-  improved: number
   rejected: { name: string; reason: string }[]
 }
 
@@ -48,7 +45,7 @@ export async function importPhotos(
   files: File[],
   onProgress: (p: ImportProgress) => void,
 ): Promise<ImportReport> {
-  const report: ImportReport = { added: 0, duplicates: 0, improved: 0, rejected: [] }
+  const report: ImportReport = { added: 0, duplicates: 0, rejected: [] }
   let ready: Omit<Photo, 'stopId'>[] = []
 
   /**
@@ -73,25 +70,9 @@ export async function importPhotos(
       continue
     }
     const key = photoKey(result.meta)
-    const existing = await db.photos.where('key').equals(key).toArray()
-    if (existing.length || ready.some((p) => p.key === key)) {
+    const exists = (await db.photos.where('key').equals(key).count()) > 0 || ready.some((p) => p.key === key)
+    if (exists) {
       report.duplicates++
-      // Foto già importata con la miniatura piccola di prima della 0.17.0: si
-      // rifà dall'originale appena scelto. Tutto il resto (tappa, locale) resta.
-      const small = existing.filter((p) => Math.max(p.width || 0, p.height || 0) < THUMB_MAX)
-      if (small.length) {
-        try {
-          const thumb = await makeThumb(file)
-          if (Math.max(thumb.width, thumb.height) > Math.max(small[0].width || 0, small[0].height || 0)) {
-            const bytes = await toStored(thumb.blob)
-            await db.transaction('rw', db.photos, () => Promise.all(small.map((p) => db.photos.update(p.id, { thumb: bytes, width: thumb.width, height: thumb.height }))))
-            forgetThumbs(small.map((p) => p.id))
-            report.improved++
-          }
-        } catch {
-          // Illeggibile: resta la miniatura di prima.
-        }
-      }
       continue
     }
     try {

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, KIND_FILTERS, type KindFilter } from './db'
+import { db, followedTripIds, KIND_FILTERS, type KindFilter } from './db'
 import { fmtRange, plural } from './format'
 import { IconBack } from './icons'
 import MapView from './MapView'
@@ -33,7 +33,10 @@ interface CountryRow {
 export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
   const [filter, setFilter] = useState<KindFilter>('tutti')
   const color = useCountryColor()
-  const data = useLiveQuery(async () => ({ stops: await db.stops.orderBy('start').toArray(), trips: await db.trips.toArray() }))
+  const data = useLiveQuery(async () => {
+    const skip = await followedTripIds()
+    return { stops: (await db.stops.orderBy('start').toArray()).filter((s) => !skip.has(s.tripId)), trips: await db.trips.toArray() }
+  })
   const pending = data?.stops.some((s) => !s.countryCode) ?? false
 
   const rows = useMemo(() => {

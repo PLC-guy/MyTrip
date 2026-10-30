@@ -56,6 +56,7 @@ function readRoute(): Route {
   if (h === '#/impostazioni') return { name: 'settings' }
   if (h === '#/impostazioni/aspetto') return { name: 'settings', page: 'aspetto' }
   if (h === '#/impostazioni/backup') return { name: 'settings', page: 'backup' }
+  if (h === '#/impostazioni/viaggiatore') return { name: 'settings', page: 'viaggiatore' }
   if (h === '#/speciali') return { name: 'stars' }
   if (h === '#/mangiato') return { name: 'meals' }
   if (h === '#/cerca') return { name: 'search' }

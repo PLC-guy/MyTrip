@@ -1,21 +1,24 @@
 import { useMemo, useState } from 'react'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, KIND_FILTERS, newId, TRIP_COLORS, type KindFilter, type Photo, type Stop, type Trip, type TripKind } from './db'
+import { db, KIND_FILTERS, newId, TRIP_COLORS, type KindFilter, type Photo, type Share, type Stop, type Trip, type TripKind } from './db'
 import { legsToLines } from './legs'
 import { useLegs } from './useLegs'
 import KindPicker from './KindPicker'
-import { daySpan, fmtRange, plural } from './format'
+import { daySpan, fmtRange, fmtStamp, plural } from './format'
 import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
 import DayNav from './DayNav'
 import FollowSheet from './FollowSheet'
-import { backupDue, describeBackupAge, runBackup, snoozeBackup, useBackupState } from './backupReminder'
+import { backupDue, describeBackupAge, photosToKeep, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
 
 const KIND_KEY = 'mytrip:home-kind'
+
+/** «In viaggio adesso»: ultima foto entro 48 ore (scelta dell'utente, 30/10/2026). */
+const LIVE_MS = 48 * 3600_000
 
 interface TripRow {
   trip: Trip
@@ -25,7 +28,7 @@ interface TripRow {
   /** Paesi del viaggio, in ordine di visita. */
   countries: string[]
   /** Condiviso in diretta da qui, o seguito da un altro telefono (sync.ts). */
-  share?: 'owner' | 'follow'
+  share?: Share
 }
 
 /** `follow`: link «#/segui/…» aperto nell'app (sul computer): il foglio parte già compilato. */
@@ -34,7 +37,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const [following, setFollowing] = useState<string | undefined>(follow)
   const [backingUp, setBackingUp] = useState(false)
   const backup = useBackupState()
-  const photoCount = useLiveQuery(() => db.photos.count())
+  const photoCount = useLiveQuery(photosToKeep)
   const due = photoCount != null && backupDue(backup, photoCount)
 
   async function doBackup() {
@@ -72,7 +75,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const allRows = useLiveQuery(async (): Promise<TripRow[]> => {
     const trips = await db.trips.toArray()
     const stops = await db.stops.orderBy('start').toArray()
-    const shares = new Map((await db.shares.toArray()).map((s) => [s.tripId, s.role]))
+    const shares = new Map((await db.shares.toArray()).map((s) => [s.tripId, s]))
     const out: TripRow[] = []
     for (const trip of trips) {
       // Copertina: immagine caricata apposta, poi foto scelta, poi la prima del viaggio.
@@ -90,10 +93,22 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     const when = (r: TripRow) => (r.stops.length ? r.stops[r.stops.length - 1].end : Number.MAX_SAFE_INTEGER - (Date.now() - r.trip.createdAt))
     return out.sort((a, b) => when(b) - when(a))
   })
+  /**
+   * VIAGGI SEGUITI A PARTE (richiesta dell'utente, 30/10/2026): un viaggio
+   * seguito è di qualcun altro, tipicamente di chi parte, seguito da chi resta a
+   * casa. Ha la sua sezione «Viaggi che segui» e non entra in «I miei viaggi», nel
+   * sottotitolo, nel filtro né nella mappa di tutti i viaggi (se ci sono viaggi
+   * propri). Paesi, Locali e Speciali lo escludono; Cerca lo segna.
+   */
+  const ownRows = useMemo(() => allRows?.filter((r) => r.share?.role !== 'follow'), [allRows])
+  const followed = useMemo(() => allRows?.filter((r) => r.share?.role === 'follow') ?? [], [allRows])
   // Il filtro compare solo se ci sono viaggi di tutti e due i tipi; senza, vale «Tutti».
-  const mixed = new Set(allRows?.map((r) => r.trip.kind ?? 'piacere')).size > 1
+  const mixed = new Set(ownRows?.map((r) => r.trip.kind ?? 'piacere')).size > 1
   const activeKind = mixed ? kindFilter : 'tutti'
-  const rows = useMemo(() => (activeKind === 'tutti' ? allRows : allRows?.filter((r) => (r.trip.kind ?? 'piacere') === activeKind)), [allRows, activeKind])
+  const rows = useMemo(() => (activeKind === 'tutti' ? ownRows : ownRows?.filter((r) => (r.trip.kind ?? 'piacere') === activeKind)), [ownRows, activeKind])
+  const live = (r: TripRow) => r.stops.length > 0 && Date.now() - r.stops[r.stops.length - 1].end < LIVE_MS
+  // Sezione dei seguiti in cima se uno è in corso, o se viaggi propri non ce ne sono.
+  const followFirst = followed.some(live) || (ownRows?.length ?? 0) === 0
 
   /**
    * Viaggio selezionato per l'anteprima: la mappa mostra solo lui, con le sue
@@ -101,7 +116,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
    * solo da lì; un altro tocco seleziona un altro viaggio.
    */
   const [selected, setSelected] = useState<string>()
-  const preview = rows?.find((r) => r.trip.id === selected)
+  const preview = allRows?.find((r) => r.trip.id === selected)
   // Tratti con i percorsi stimati, solo per il viaggio in anteprima.
   const previewLegs = useLegs(preview?.trip.id, preview?.stops)
 
@@ -123,12 +138,13 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     }
     const pins: MapPin[] = []
     const lines: MapLine[] = []
-    for (const r of rows ?? []) {
+    // Senza viaggi propri (chi resta a casa) la mappa mostra quelli seguiti.
+    for (const r of rows?.length ? rows : followed) {
       for (const s of r.stops) pins.push({ id: r.trip.id + '|' + s.id, lat: s.lat, lon: s.lon, color: r.trip.color })
       lines.push({ id: r.trip.id, color: r.trip.color, points: r.stops.map((s) => [s.lat, s.lon]) })
     }
     return { pins, lines, fitKey: `tutti:${pins.length}` }
-  }, [rows, preview, covers, previewLegs])
+  }, [rows, followed, preview, covers, previewLegs])
 
   const select = (id: string) => {
     const next = id === selected ? undefined : id
@@ -161,7 +177,83 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     go({ name: 'trip', id: trip.id })
   }
 
-  if (!rows || !allRows) return null
+  if (!rows || !allRows || !ownRows) return null
+
+  // Una scheda: biglietto come quelle del sito; i viaggi seguiti hanno un bordo
+  // tratteggiato, chi viaggia, «in viaggio adesso» e l'ultimo aggiornamento.
+  const card = (r: TripRow) => {
+    const follow = r.share?.role === 'follow' ? r.share : undefined
+    return (
+      <div key={r.trip.id} id={`trip-${r.trip.id}`} className={`trip-item${follow ? ' followed' : ''}${r.trip.id === selected ? ' on' : ''}`}>
+        <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
+          <div className="trip-head">
+            <span className="label">
+              <span className="dot" style={{ background: r.trip.color }} />
+              {follow ? (follow.by ? `👁 Viaggio di ${follow.by}` : '👁 Seguito') : r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
+              {r.stops.length ? ` · ${r.stops[0].first.slice(0, 4)}` : ''}
+              {r.share?.role === 'owner' ? ' · 📡 In diretta' : ''}
+            </span>
+            {follow && !follow.ended && live(r) ? (
+              <span className="live-badge">in viaggio adesso</span>
+            ) : (
+              r.countries.length > 0 && <span className="label soft">{r.countries.join(' · ')}</span>
+            )}
+          </div>
+          <div className="trip-main">
+            <h3>{r.trip.name}</h3>
+            {r.cover ? (
+              <img className="cover" src={thumbUrl(r.cover)} alt="" />
+            ) : (
+              <div className="cover" style={{ display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
+                <IconPhotos />
+              </div>
+            )}
+          </div>
+          {/* La perforazione del biglietto, con le due tacche ai lati, come sul sito di Greta. */}
+          <div className="perf" aria-hidden="true" />
+          {r.stops.length ? (
+            <div className="facts">
+              <div>
+                <span className="label soft">Date</span>
+                <b>{fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
+              </div>
+              <div>
+                <span className="label soft">Giorni</span>
+                <b>{daySpan(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
+              </div>
+              <div>
+                <span className="label soft">Foto</span>
+                <b>{r.photos}</b>
+              </div>
+            </div>
+          ) : (
+            <span className="meta">{follow ? 'Ancora nessuna foto' : 'Ancora nessuna foto: tocca per aggiungerle'}</span>
+          )}
+          {follow && (
+            <span className="meta follow-meta">
+              {follow.ended ? 'Non è più condiviso: ora esiste solo su questo telefono, tienilo nel backup.' : follow.at ? `Aggiornato ${fmtStamp(follow.at)}` : 'In attesa del primo aggiornamento'}
+            </span>
+          )}
+        </button>
+        {r.trip.id === selected && (
+          <button className="btn open-trip" onClick={() => go({ name: 'trip', id: r.trip.id })}>
+            Visualizza tappe →
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  // Con un viaggio scelto, spazio sotto l'ultimo elenco: anche l'ultima scheda deve poter salire fin sotto la mappa.
+  const followedSection = followed.length > 0 && (
+    <>
+      <div className="section-head">
+        <h2 className="section-title">Viaggi che segui</h2>
+        <button className="small-link" onClick={() => setFollowing('')}>+ Segui</button>
+      </div>
+      <div className={`trips${selected && !followFirst ? ' room' : ''}`}>{followed.map(card)}</div>
+    </>
+  )
 
   return (
     <div className="page">
@@ -171,7 +263,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
           <IconGear />
         </button>
       </div>
-      {allRows.length > 0 && (
+      {ownRows.length > 0 && (
         <p className="subtitle">
           {plural(rows.length, 'viaggio', 'viaggi')} · {plural(new Set(rows.flatMap((r) => r.countries)).size, 'paese', 'paesi')} ·{' '}
           {/* Giorni di calendario di tutti i viaggi, come i «Giorni» delle schede. */}
@@ -183,7 +275,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </p>
       )}
 
-      {allRows.length > 0 && (
+      {ownRows.length > 0 && (
         <div className="shortcuts">
           <button onClick={() => go({ name: 'countries' })}>
             <IconGlobe /> Paesi
@@ -239,7 +331,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </div>
       )}
 
-      {allRows.length === 0 ? (
+      {allRows.length === 0 && (
         <div className="empty-state">
           <h2>Il primo viaggio</h2>
           <p>Crea un viaggio e aggiungi le foto dalla galleria: data e luogo di ogni scatto diventano tappe sulla mappa.</p>
@@ -250,14 +342,19 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
             Segui il viaggio di qualcuno
           </button>
         </div>
-      ) : (
+      )}
+
+      {followFirst && followedSection}
+
+      {allRows.length > 0 && (
         // «Nuovo viaggio» accanto al titolo e non fisso sullo schermo: copriva
         // «Visualizza tappe» dell'anteprima. Un viaggio nuovo si crea appena
         // aperta l'app, non dopo aver scorso l'elenco (scelta dell'utente, 27/10/2026).
+        // Chi ha solo viaggi seguiti vede un invito più discreto.
         <div className="section-head">
           <h2 className="section-title">I miei viaggi</h2>
-          <button className="btn small-btn" onClick={() => setCreating(true)}>
-            <IconPlus /> Nuovo viaggio
+          <button className={ownRows.length ? 'btn small-btn' : 'btn ghost small-btn'} onClick={() => setCreating(true)}>
+            <IconPlus /> {ownRows.length ? 'Nuovo viaggio' : 'Crea un tuo viaggio'}
           </button>
         </div>
       )}
@@ -282,61 +379,9 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </div>
       )}
 
-      {/* Con un viaggio scelto, spazio sotto l'elenco: anche l'ultimo deve poter salire fin sotto la mappa. */}
-      <div className={`trips${selected ? ' room' : ''}`}>
-        {rows.map((r) => (
-          <div key={r.trip.id} id={`trip-${r.trip.id}`} className={`trip-item${r.trip.id === selected ? ' on' : ''}`}>
-          {/* Scheda come quelle del sito: etichetta in maiuscoletto, titolo, separatore, dati in colonne. */}
-          <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
-            <div className="trip-head">
-              <span className="label">
-                <span className="dot" style={{ background: r.trip.color }} />
-                {r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
-                {r.stops.length ? ` · ${r.stops[0].first.slice(0, 4)}` : ''}
-                {r.share === 'owner' ? ' · 📡 In diretta' : r.share === 'follow' ? ' · 👁 Seguito' : ''}
-              </span>
-              {r.countries.length > 0 && <span className="label soft">{r.countries.join(' · ')}</span>}
-            </div>
-            <div className="trip-main">
-              <h3>{r.trip.name}</h3>
-              {r.cover ? (
-                <img className="cover" src={thumbUrl(r.cover)} alt="" />
-              ) : (
-                <div className="cover" style={{ display: 'grid', placeItems: 'center', color: 'var(--muted)' }}>
-                  <IconPhotos />
-                </div>
-              )}
-            </div>
-            {/* La perforazione del biglietto, con le due tacche ai lati, come sul sito di Greta. */}
-            <div className="perf" aria-hidden="true" />
-            {r.stops.length ? (
-              <div className="facts">
-                <div>
-                  <span className="label soft">Date</span>
-                  <b>{fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
-                </div>
-                <div>
-                  <span className="label soft">Giorni</span>
-                  <b>{daySpan(r.stops[0].first, r.stops[r.stops.length - 1].first)}</b>
-                </div>
-                <div>
-                  <span className="label soft">Foto</span>
-                  <b>{r.photos}</b>
-                </div>
-              </div>
-            ) : (
-              <span className="meta">Ancora nessuna foto: tocca per aggiungerle</span>
-            )}
-          </button>
-          {r.trip.id === selected && (
-            <button className="btn open-trip" onClick={() => go({ name: 'trip', id: r.trip.id })}>
-              Visualizza tappe →
-            </button>
-          )}
-          </div>
-        ))}
-      </div>
+      <div className={`trips${selected && (followFirst || !followed.length) ? ' room' : ''}`}>{rows.map(card)}</div>
 
+      {!followFirst && followedSection}
 
       {/* Solo «torna in cima», senza giorni (richiesta dell'utente). */}
       <DayNav days={0} />
