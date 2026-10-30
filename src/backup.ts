@@ -1,5 +1,6 @@
 import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
+import { currentPushSub } from './sync'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
 
@@ -189,13 +190,21 @@ export async function importFile(file: File): Promise<ImportSummary> {
   }
   const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToStored(t.coverImage) : undefined }))
 
+  // ⚠️ Notifiche dei viaggi seguiti (richiesta dell'utente, 30/10/2026):
+  // l'iscrizione vale per UN telefono e UNA installazione dell'app. Ripristinata
+  // altrove (telefono nuovo, app reinstallata) il menu direbbe «a ogni novità»
+  // ma arriverebbero al vecchio indirizzo. Si tiene solo se è la stessa di
+  // questo telefono; altrimenti risultano spente e si riattivano con un tocco.
+  const mine = data.shares?.some((s) => s.notify) ? await currentPushSub() : undefined
+  const shares = (data.shares ?? []).map((s) => (s.notify && s.notify.sub !== mine ? { ...s, notify: undefined } : s))
+
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
   // indirizzi in memoria puntano alle immagini di prima.
   forgetThumbs([...photos.map((p) => p.id), ...trips.flatMap((t) => (t.coverImageId ? [t.coverImageId] : []))])
 
   await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
     await db.trips.bulkPut(trips)
-    if (data.kind === 'backup' && Array.isArray(data.shares)) await db.shares.bulkPut(data.shares)
+    if (data.kind === 'backup' && Array.isArray(data.shares)) await db.shares.bulkPut(shares)
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)
     if (Array.isArray(data.routes)) await db.routes.bulkPut(data.routes)

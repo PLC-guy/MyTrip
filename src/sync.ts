@@ -426,6 +426,22 @@ export async function setNotify(tripId: string, pref: { mode: NotifyMode; hour: 
 }
 
 /**
+ * Impronta dell'iscrizione alle notifiche di QUESTO telefono e di questa
+ * installazione dell'app (come `Share.notify.sub`), o undefined se non c'è.
+ * Senza attese: in sviluppo il service worker può mancare.
+ */
+export async function currentPushSub(): Promise<string | undefined> {
+  if (!('serviceWorker' in navigator)) return undefined
+  try {
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager?.getSubscription()
+    return sub ? await sha256(sub.endpoint) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Prima di eliminare un viaggio condiviso o seguito: chi viaggia lo toglie dal
  * server, chi segue toglie la sua iscrizione alle notifiche.
  */
