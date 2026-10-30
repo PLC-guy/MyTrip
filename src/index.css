@@ -421,7 +421,7 @@ textarea.field { min-height: 84px; resize: vertical; }
 .nav-list { margin-top: 8px; }
 .list > .nav-item { width: 100%; border: 0; border-bottom: 1.5px dashed color-mix(in srgb, var(--ink) 15%, transparent); background: none; text-align: left; color: var(--ink); }
 .list > .nav-item:last-child { border-bottom: 0; }
-.list > .nav-item { position: relative; justify-content: center; min-height: 56px; }
+.list > .nav-item { position: relative; justify-content: flex-start; min-height: 56px; padding-right: 40px; }
 .nav-item b { font: var(--display-weight) 1.15rem/1.2 var(--display); }
 .nav-item .chev { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 1.6rem; line-height: 1; color: var(--muted); }
 /* Backup da fare: la voce prende il fondo degli avvisi. */

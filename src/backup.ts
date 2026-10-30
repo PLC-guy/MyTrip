@@ -1,6 +1,7 @@
 import { db, type Photo, type Route, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
 import type { Progress } from './exportFlow'
+import { shareThumb } from './shareThumb'
 
 /**
  * File di export: un viaggio singolo o il backup di tutti.
@@ -26,6 +27,8 @@ interface ExportFile {
   photos: PhotoFile[]
   /** Percorsi stimati fra le tappe (dalla 0.6.0, facoltativi: i file più vecchi non li hanno). */
   routes?: Route[]
+  /** Miniature ridotte per condividere (shareThumb.ts): all'import non sostituiscono quelle già presenti. */
+  lite?: boolean
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -61,7 +64,7 @@ const PARALLEL = 8
  * pezzi; le miniature si convertono PARALLEL alla volta, con l'avanzamento.
  * Il contenuto è identico a prima: formato 1, si reimporta allo stesso modo.
  */
-async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onProgress?: Progress): Promise<File> {
+async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onProgress?: Progress, lite = false): Promise<File> {
   const ids = trips.map((t) => t.id)
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
@@ -72,12 +75,14 @@ async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onPr
   const parts: string[] = []
   onProgress?.(0, photos.length)
   for (let i = 0; i < photos.length; i += PARALLEL) {
-    const chunk = await Promise.all(photos.slice(i, i + PARALLEL).map(async (p) => JSON.stringify({ ...p, thumb: await blobToDataUrl(p.thumb) } satisfies PhotoFile)))
+    const chunk = await Promise.all(
+      photos.slice(i, i + PARALLEL).map(async (p) => JSON.stringify({ ...p, thumb: await blobToDataUrl(lite ? await shareThumb(p.thumb) : p.thumb) } satisfies PhotoFile)),
+    )
     parts.push(...chunk)
     onProgress?.(Math.min(i + PARALLEL, photos.length), photos.length)
   }
 
-  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes }
+  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}) }
   const json = JSON.stringify(head)
   const pieces: BlobPart[] = [json.slice(0, -1), ',"photos":[']
   parts.forEach((p, i) => pieces.push(i ? ',' : '', p))
@@ -120,7 +125,8 @@ export async function exportTrips(tripIds: string[], onProgress?: Progress): Pro
   if (trips.length === 0) throw new Error('Nessun viaggio scelto')
   const day = new Date().toISOString().slice(0, 10)
   const base = trips.length === 1 ? safeName(trips[0].name) : `MyTrip-${trips.length}-viaggi-${day}`
-  return pack(await build('trip', trips, 'export.json', onProgress), base)
+  // Da mandare ad altri: miniature ridotte (shareThumb.ts). Il backup completo no.
+  return pack(await build('trip', trips, 'export.json', onProgress, true), base)
 }
 
 export async function exportBackup(onProgress?: Progress): Promise<File> {
@@ -153,6 +159,16 @@ export async function importFile(file: File): Promise<ImportSummary> {
   }
 
   const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToBlob(p.thumb) }))
+  // ⚠️ Un file da condividere ha miniature ridotte: se quelle foto ci sono già
+  // (per esempio un viaggio che torna indietro da chi l'ha ricevuto), si tengono
+  // le miniature di qui, più nitide. Tutto il resto si aggiorna come sempre.
+  if (data.lite) {
+    const existing = await db.photos.bulkGet(photos.map((p) => p.id))
+    photos.forEach((p, i) => {
+      const old = existing[i]
+      if (old) p.thumb = old.thumb
+    })
+  }
   const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToBlob(t.coverImage) : undefined }))
 
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli

@@ -40,6 +40,9 @@ export default defineConfig({
       },
     },
   },
+  // ⚠️ Il codificatore JPEG (@jsquash/jpeg) carica il suo .wasm da sé: Vite non deve
+  // pre-elaborarlo in sviluppo, altrimenti non lo trova (indicazione del pacchetto).
+  optimizeDeps: { exclude: ['@jsquash/jpeg'] },
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     __COMMIT__: JSON.stringify(commitRef()),
@@ -71,7 +74,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // wasm: il codificatore JPEG degli export da condividere (~250 KB), anche offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
         cleanupOutdatedCaches: true,
         navigateFallback: `${BASE}index.html`,
         runtimeCaching: [

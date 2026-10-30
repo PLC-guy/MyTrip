@@ -195,7 +195,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       </button>
 
       <h2 className="section-title">Esporta alcuni viaggi</h2>
-      <p className="small">Per salvare solo qualche viaggio o passarlo a qualcuno. Più viaggi finiscono in un unico file.</p>
+      <p className="small">Per passare qualche viaggio a qualcuno. Più viaggi finiscono in un unico file, con foto alleggerite per mandarle facilmente.</p>
       <button className="btn ghost" disabled={working || !trips} onClick={() => setChoosing(true)}>
         Scegli i viaggi da esportare
       </button>
