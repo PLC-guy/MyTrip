@@ -153,11 +153,46 @@ export interface Route {
   v?: number
 }
 
+/**
+ * Viaggio condiviso in diretta (sync.ts): da chi viaggia (`owner`) o da chi lo
+ * segue (`follow`, in sola lettura). Una riga per viaggio, a parte dal viaggio
+ * stesso: così non finisce negli export da mandare ad altri.
+ * ⚠️ `token` è il permesso di scrittura: non deve mai uscire dal telefono, se
+ * non nel backup completo.
+ */
+export interface Share {
+  tripId: string
+  role: 'owner' | 'follow'
+  /** Id casuale del viaggio sul server. */
+  id: string
+  /** Chiave AES della cifratura (crypt.ts). */
+  key: string
+  /** Solo owner: permesso di scrittura. */
+  token?: string
+  /** Versione dell'indice caricato (owner) o scaricato (follow). */
+  v?: string
+  /** Solo owner: foto già caricate → peso della miniatura (se cambia, si ricarica). */
+  sent?: Record<string, number>
+  /** Ultimo aggiornamento riuscito. */
+  at?: number
+  /** Ultimo errore, da mostrare; sparisce al primo aggiornamento riuscito. */
+  error?: string
+  /**
+   * Solo follow: notifiche scelte da chi segue. `each` = a ogni novità (al più
+   * una ogni 15 minuti), `daily` = un riepilogo al giorno all'ora `hour`.
+   * `sub` = impronta dell'iscrizione sul server, per toglierla.
+   */
+  notify?: { mode: 'each' | 'daily'; hour: number; sub: string }
+  /** Solo owner: foto nuove il cui avviso a chi segue aspetta i nomi dei luoghi (sync.ts). */
+  note?: { ids: string[]; since: number }
+}
+
 export const db = new Dexie('mytrip') as Dexie & {
   trips: EntityTable<Trip, 'id'>
   stops: EntityTable<Stop, 'id'>
   photos: EntityTable<Photo, 'id'>
   routes: EntityTable<Route, 'id'>
+  shares: EntityTable<Share, 'tripId'>
 }
 
 db.version(1).stores({
@@ -168,6 +203,10 @@ db.version(1).stores({
 // Versione 2 (0.6.0): percorsi stimati fra le tappe.
 db.version(2).stores({
   routes: 'id, toStopId, tripId',
+})
+// Versione 3 (0.14.0): viaggi condivisi in diretta.
+db.version(3).stores({
+  shares: 'tripId, role',
 })
 
 /** Colori dei viaggi, a rotazione: la palette del sito di Greta (tè, blu, laterite, zafferano…). */
@@ -194,7 +233,8 @@ export function newId(): string {
 export async function deleteTrip(tripId: string): Promise<void> {
   const trip = await db.trips.get(tripId)
   forgetThumbs([...(await db.photos.where('tripId').equals(tripId).primaryKeys()), ...(trip?.coverImageId ? [trip.coverImageId] : [])])
-  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes], async () => {
+  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
+    await db.shares.delete(tripId)
     await db.photos.where('tripId').equals(tripId).delete()
     await db.stops.where('tripId').equals(tripId).delete()
     await db.routes.where('tripId').equals(tripId).delete()

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip, stopTitle, TRIP_COLORS, type Photo, type Stop, type TripKind } from './db'
 import KindPicker from './KindPicker'
-import { dayOf, daySpan, fmtDayLong, fmtDayShort, fmtDuration, fmtRange, fmtTime, plural } from './format'
+import { dayOf, daySpan, fmtDayLong, fmtDayShort, fmtDuration, fmtRange, fmtStamp, fmtTime, plural } from './format'
 import { geocodePending } from './geocode'
 import { IconBack, IconMore, IconPhotos, IconPlay, IconStop } from './icons'
 import { importPhotos, type ImportProgress, type ImportReport } from './importPhotos'
@@ -21,6 +21,9 @@ import { legsToLines } from './legs'
 import { useLegs } from './useLegs'
 import { routesPending } from './routing'
 import { describeWeather, weatherPending } from './weather'
+import ShareSheet from './ShareSheet'
+import NotifySheet from './NotifySheet'
+import { leaveShare, pullShare, useSyncStatus } from './sync'
 import type { Route } from './App'
 
 type Panel =
@@ -31,6 +34,8 @@ type Panel =
   | { kind: 'menu' }
   | { kind: 'cover' }
   | { kind: 'color' }
+  | { kind: 'share' }
+  | { kind: 'notify' }
   | { kind: 'rename'; value: string; type: TripKind }
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
@@ -72,6 +77,17 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     const photos = await db.photos.where('tripId').equals(id).sortBy('time')
     return { trip, stops, photos }
   }, [id])
+
+  /**
+   * Viaggio condiviso in diretta (sync.ts). Seguito da un altro telefono: sola
+   * lettura, niente import né modifiche; all'apertura si chiedono le novità.
+   */
+  const share = useLiveQuery(() => db.shares.get(id), [id])
+  const readOnly = share?.role === 'follow'
+  const sync = useSyncStatus(id)
+  useEffect(() => {
+    if (readOnly) void pullShare(id)
+  }, [id, readOnly])
 
   // Selezione annullata nel selettore di iOS: si toglie l'avviso di attesa.
   // (React non inoltra l'evento `cancel` degli input, si ascolta a mano.)
@@ -286,7 +302,21 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <p className="meta" style={{ margin: '10px 2px 0' }}>
             {fmtRange(data.stops[0].first, data.stops.at(-1)!.first)} · {plural(data.stops.length, 'tappa', 'tappe')} · {plural(data.photos.length, 'foto', 'foto')}
           </p>
-          {warnings.length > 0 && (
+          {share && (
+            <p className="small share-line">
+              {readOnly ? '👁 Segui questo viaggio' : '📡 Condiviso in diretta'}
+              {sync.busy
+                ? readOnly
+                  ? ' · scarico le novità…'
+                  : ' · carico le novità…'
+                : share.error
+                  ? ` · ⚠️ ${share.error}`
+                  : share.at
+                    ? ` · aggiornato ${fmtStamp(share.at)}`
+                    : ''}
+            </p>
+          )}
+          {warnings.length > 0 && !readOnly && (
             <button
               className="note-box warm warn-banner"
               onClick={() => {
@@ -310,10 +340,11 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {data.stops.length === 0 && (
         <div className="empty-state">
           <h2>Aggiungi le foto</h2>
-          <p>Scegli le foto del viaggio dalla Libreria foto. Entrano solo quelle con data e posizione.</p>
+          <p>{readOnly ? 'Ancora nessuna foto: arriveranno qui man mano.' : 'Scegli le foto del viaggio dalla Libreria foto. Entrano solo quelle con data e posizione.'}</p>
         </div>
       )}
 
+      {!readOnly && (
       <div style={{ marginTop: 14 }}>
         <label className="btn">
           <IconPhotos /> Aggiungi foto
@@ -335,6 +366,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           />
         </label>
       </div>
+      )}
 
       {stats && stats.stops > 0 && (
         <>
@@ -377,9 +409,13 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             <b>Giorno {dayNumber(d.day)}</b>
             <span>{fmtDayLong(d.stops[0].first)}</span>
           </div>
-          <button className="diary" onClick={() => setPanel({ kind: 'diary', day: d.day, value: trip.diary?.[d.day] ?? '' })}>
-            {trip.diary?.[d.day] ? <span className="diary-text">{trip.diary[d.day]}</span> : <span className="diary-add">✎ Scrivi il diario del giorno</span>}
-          </button>
+          {readOnly ? (
+            trip.diary?.[d.day] && <div className="diary"><span className="diary-text">{trip.diary[d.day]}</span></div>
+          ) : (
+            <button className="diary" onClick={() => setPanel({ kind: 'diary', day: d.day, value: trip.diary?.[d.day] ?? '' })}>
+              {trip.diary?.[d.day] ? <span className="diary-text">{trip.diary[d.day]}</span> : <span className="diary-add">✎ Scrivi il diario del giorno</span>}
+            </button>
+          )}
           {d.stops.map((s) => {
             const photos = byStop.get(s.id) ?? []
             const idx = data.stops.indexOf(s)
@@ -389,9 +425,9 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               <Fragment key={s.id}>
                 {leg && (
                   // Mezzo scelto: pieno. Dedotto: tratteggiato, col «?». Da verificare: ⚠️.
-                  <button id={`leg-${s.id}`} className={`leg${leg.inferred ? '' : ' set'}${leg.warning ? ' warn' : ''}`} onClick={() => openLeg(s.id)}>
+                  <button id={`leg-${s.id}`} className={`leg${leg.inferred ? '' : ' set'}${leg.warning && !readOnly ? ' warn' : ''}`} disabled={readOnly} onClick={() => openLeg(s.id)}>
                     <span className="leg-label">
-                      {leg.warning ? '⚠️ ' : ''}
+                      {leg.warning && !readOnly ? '⚠️ ' : ''}
                       {leg.icon} {leg.inferred ? `${leg.label.toLowerCase()}?` : leg.label} · {fmtKm(leg.km)}
                       {leg.minutes != null && leg.minutes >= 1 && !leg.straight ? ` · ${fmtDuration(leg.minutes)}` : ''}
                     </span>
@@ -442,6 +478,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           stop={stop}
           photos={byStop.get(stop.id) ?? []}
           color={trip.color}
+          readOnly={readOnly}
           prev={data.stops[stopIndex - 1]}
           next={data.stops[stopIndex + 1]}
           onClose={() => setOpenStop(undefined)}
@@ -597,7 +634,22 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {panel.kind === 'menu' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })} leaving={leaving} swap={swapped}>
           <h2>{trip.name}</h2>
+          {readOnly ? (
+            <>
+              <div className="stack">
+                <button className="btn ghost" onClick={() => swapTo({ kind: 'notify' })}>
+                  🔔 Notifiche · {share?.notify ? (share.notify.mode === 'each' ? 'a ogni novità' : `ogni giorno alle ${share.notify.hour}`) : 'spente'}
+                </button>
+                <button className="btn ghost" disabled={sync.busy} onClick={() => void pullShare(id)}>{sync.busy ? 'Aggiorno…' : 'Aggiorna ora'}</button>
+                <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps (KML)</button>
+                <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Smetti di seguire</button>
+              </div>
+              <p className="small">Segui questo viaggio in sola lettura: le novità arrivano da sole quando apri l'app.</p>
+            </>
+          ) : (
+          <>
           <div className="stack">
+            <button className="btn ghost" onClick={() => swapTo({ kind: 'share' })}>📡 Condividi in diretta{share ? ' · attiva' : ''}</button>
             <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
             <button className="btn ghost" onClick={() => swapTo({ kind: 'cover' })}>Scegli la copertina</button>
             <button className="btn ghost" onClick={() => swapTo({ kind: 'color' })}>
@@ -610,8 +662,14 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <p className="small">
             Il file KML si importa in Google My Maps (Crea una nuova mappa → Importa) o si apre in Google Earth: contiene tappe, date, note e percorso, ma non le foto.
           </p>
+          </>
+          )}
         </Sheet>
       )}
+
+      {panel.kind === 'share' && <ShareSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
+
+      {panel.kind === 'notify' && share && <NotifySheet share={share} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
 
       {panel.kind === 'cover' && <CoverSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
 
@@ -662,19 +720,24 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
 
       {panel.kind === 'delete' && (
         <Sheet onClose={() => setPanel({ kind: 'none' })}>
-          <h2>Eliminare «{trip.name}»?</h2>
+          <h2>{readOnly ? `Smettere di seguire «${trip.name}»?` : `Eliminare «${trip.name}»?`}</h2>
           <p className="small">
-            Si cancellano dall'app {plural(data.stops.length, 'tappa', 'tappe')} e {plural(data.photos.length, 'miniatura', 'miniature')}. Le foto originali nella galleria non si toccano. Se vuoi tenerne una copia, prima esporta il viaggio.
+            {readOnly
+              ? 'Il viaggio sparisce da questo telefono. Chi lo condivide non perde niente.'
+              : `Si cancellano dall'app ${plural(data.stops.length, 'tappa', 'tappe')} e ${plural(data.photos.length, 'miniatura', 'miniature')}. Le foto originali nella galleria non si toccano. Se vuoi tenerne una copia, prima esporta il viaggio.${share ? ' Chi lo segue non riceverà più novità.' : ''}`}
           </p>
           <div className="stack">
             <button
               className="btn danger"
               onClick={async () => {
+                // Condiviso: via anche dal server (se manca la rete, resta lì cifrato).
+                // Seguito: via l'iscrizione alle notifiche.
+                await leaveShare(id).catch(() => {})
                 await deleteTrip(id)
                 go({ name: 'home' })
               }}
             >
-              Elimina
+              {readOnly ? 'Smetti di seguire' : 'Elimina'}
             </button>
             <button className="btn ghost" onClick={() => setPanel({ kind: 'none' })}>Annulla</button>
           </div>

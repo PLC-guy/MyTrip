@@ -1,4 +1,4 @@
-import { db, type Photo, type Route, type Stop, type Trip } from './db'
+import { db, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
@@ -29,6 +29,12 @@ interface ExportFile {
   routes?: Route[]
   /** Miniature ridotte per condividere (shareThumb.ts): all'import non sostituiscono quelle già presenti. */
   lite?: boolean
+  /**
+   * Solo nel backup completo (dalla 0.14.0): i viaggi condivisi e seguiti, con il
+   * permesso di scrittura. Così, ripristinando su un telefono nuovo, si continua
+   * ad aggiornare il viaggio condiviso. ⚠️ Mai negli export da mandare ad altri.
+   */
+  shares?: Share[]
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -69,6 +75,7 @@ async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onPr
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
   const routes = await db.routes.where('tripId').anyOf(ids).toArray()
+  const shares = kind === 'backup' ? await db.shares.where('tripId').anyOf(ids).toArray() : []
   const tripFiles: TripFile[] = []
   for (const t of trips) tripFiles.push({ ...t, coverImage: t.coverImage ? await blobToDataUrl(t.coverImage) : undefined })
 
@@ -82,7 +89,7 @@ async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onPr
     onProgress?.(Math.min(i + PARALLEL, photos.length), photos.length)
   }
 
-  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}) }
+  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}), ...(shares.length ? { shares } : {}) }
   const json = JSON.stringify(head)
   const pieces: BlobPart[] = [json.slice(0, -1), ',"photos":[']
   parts.forEach((p, i) => pieces.push(i ? ',' : '', p))
@@ -175,8 +182,9 @@ export async function importFile(file: File): Promise<ImportSummary> {
   // indirizzi in memoria puntano alle immagini di prima.
   forgetThumbs([...photos.map((p) => p.id), ...trips.flatMap((t) => (t.coverImageId ? [t.coverImageId] : []))])
 
-  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes], async () => {
+  await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
     await db.trips.bulkPut(trips)
+    if (data.kind === 'backup' && Array.isArray(data.shares)) await db.shares.bulkPut(data.shares)
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)
     if (Array.isArray(data.routes)) await db.routes.bulkPut(data.routes)

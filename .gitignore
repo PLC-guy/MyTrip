@@ -2,3 +2,6 @@
 # Qui si escludono solo i file generati.
 node_modules/
 dist/
+
+# Cartella di lavoro di wrangler (server/).
+.wrangler/

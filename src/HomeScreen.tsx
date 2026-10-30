@@ -11,6 +11,7 @@ import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
 import DayNav from './DayNav'
+import FollowSheet from './FollowSheet'
 import { backupDue, describeBackupAge, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
 
@@ -21,10 +22,14 @@ interface TripRow {
   photos: number
   /** Paesi del viaggio, in ordine di visita. */
   countries: string[]
+  /** Condiviso in diretta da qui, o seguito da un altro telefono (sync.ts). */
+  share?: 'owner' | 'follow'
 }
 
-export default function HomeScreen({ go }: { go: (r: Route) => void }) {
+/** `follow`: link «#/segui/…» aperto nell'app (sul computer): il foglio parte già compilato. */
+export default function HomeScreen({ go, follow }: { go: (r: Route) => void; follow?: string }) {
   const [creating, setCreating] = useState(false)
+  const [following, setFollowing] = useState<string | undefined>(follow)
   const [backingUp, setBackingUp] = useState(false)
   const backup = useBackupState()
   const photoCount = useLiveQuery(() => db.photos.count())
@@ -44,6 +49,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
   const rows = useLiveQuery(async (): Promise<TripRow[]> => {
     const trips = await db.trips.toArray()
     const stops = await db.stops.orderBy('start').toArray()
+    const shares = new Map((await db.shares.toArray()).map((s) => [s.tripId, s.role]))
     const out: TripRow[] = []
     for (const trip of trips) {
       // Copertina: immagine caricata apposta, poi foto scelta, poi la prima del viaggio.
@@ -55,7 +61,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
       const photos = await db.photos.where('tripId').equals(trip.id).count()
       const own = stops.filter((s) => s.tripId === trip.id)
       const countries = [...new Set(own.map((s) => s.country).filter((c): c is string => !!c))]
-      out.push({ trip, stops: own, cover, photos, countries })
+      out.push({ trip, stops: own, cover, photos, countries, share: shares.get(trip.id) })
     }
     // Il più recente in alto; i viaggi appena creati e ancora vuoti sopra tutti.
     const when = (r: TripRow) => (r.stops.length ? r.stops[r.stops.length - 1].end : Number.MAX_SAFE_INTEGER - (Date.now() - r.trip.createdAt))
@@ -213,6 +219,9 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
           <button className="btn" onClick={() => setCreating(true)}>
             <IconPlus /> Nuovo viaggio
           </button>
+          <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setFollowing('')}>
+            Segui il viaggio di qualcuno
+          </button>
         </div>
       ) : (
         // «Nuovo viaggio» accanto al titolo e non fisso sullo schermo: copriva
@@ -237,6 +246,7 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
                 <span className="dot" style={{ background: r.trip.color }} />
                 {r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
                 {r.stops.length ? ` · ${r.stops[0].first.slice(0, 4)}` : ''}
+                {r.share === 'owner' ? ' · 📡 In diretta' : r.share === 'follow' ? ' · 👁 Seguito' : ''}
               </span>
               {r.countries.length > 0 && <span className="label soft">{r.countries.join(' · ')}</span>}
             </div>
@@ -300,7 +310,31 @@ export default function HomeScreen({ go }: { go: (r: Route) => void }) {
               Crea
             </button>
           </form>
+          <button
+            className="small-link"
+            style={{ marginTop: 14 }}
+            onClick={() => {
+              setCreating(false)
+              setFollowing('')
+            }}
+          >
+            Hai ricevuto un link? Segui un viaggio
+          </button>
         </Sheet>
+      )}
+
+      {following !== undefined && (
+        <FollowSheet
+          initial={following}
+          onClose={() => {
+            setFollowing(undefined)
+            if (follow !== undefined) go({ name: 'home' })
+          }}
+          onFollowed={(id) => {
+            setFollowing(undefined)
+            go({ name: 'trip', id })
+          }}
+        />
       )}
     </div>
   )

@@ -48,3 +48,16 @@ export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 
 
 /** «45 min», «3 h 05». */
 export const fmtDuration = (min: number) => (min < 60 ? `${Math.round(min)} min` : `${Math.floor(min / 60)} h ${String(Math.round(min % 60)).padStart(2, '0')}`)
+
+const STAMP_TIME = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' })
+const STAMP_DAY = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short' })
+/**
+ * Un istante VERO nell'ora di questo telefono (non l'ora di uno scatto):
+ * «oggi alle 14:05», «ieri alle 9:30», «28 ott alle 18:00». Per i viaggi condivisi.
+ */
+export function fmtStamp(ms: number): string {
+  const d = new Date(ms)
+  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86_400_000)
+  const day = days === 0 ? 'oggi' : days === 1 ? 'ieri' : STAMP_DAY.format(d)
+  return `${day} alle ${STAMP_TIME.format(d)}`
+}

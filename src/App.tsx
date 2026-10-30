@@ -16,6 +16,7 @@ import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
 import { recolorTrips } from './db'
 import { routesPending } from './routing'
+import { startSync } from './sync'
 import { reloadLoopDetected } from './reloadGuard'
 import { applyUpdate, startAutoUpdate } from './update'
 
@@ -27,6 +28,8 @@ export type Route =
   | { name: 'meals' }
   | { name: 'search' }
   | { name: 'countries' }
+  /** Link di un viaggio condiviso (sync.ts): la Home con «Segui un viaggio» già compilato. */
+  | { name: 'follow'; code: string }
 
 // Una volta per caricamento della pagina, non a ogni disegno.
 const LOOP_BROKEN = reloadLoopDetected()
@@ -57,6 +60,7 @@ function readRoute(): Route {
   if (h === '#/mangiato') return { name: 'meals' }
   if (h === '#/cerca') return { name: 'search' }
   if (h === '#/paesi') return { name: 'countries' }
+  if (h.startsWith('#/segui/')) return { name: 'follow', code: h.slice(8) }
   return { name: 'home' }
 }
 
@@ -67,6 +71,7 @@ function writeRoute(r: Route): string {
   if (r.name === 'meals') return '#/mangiato'
   if (r.name === 'search') return '#/cerca'
   if (r.name === 'countries') return '#/paesi'
+  if (r.name === 'follow') return `#/segui/${r.code}`
   return '#/'
 }
 
@@ -78,7 +83,7 @@ function writeRoute(r: Route): string {
  * Con la View Transitions API (Safari 18+): dove manca, il cambio è immediato
  * come prima. Lo «swipe indietro» di iOS non passa di qui: resta il suo.
  */
-const SIDE: Record<Route['name'], number> = { countries: -1, meals: -1, stars: -1, search: -1, home: 0, trip: 1, settings: 1 }
+const SIDE: Record<Route['name'], number> = { countries: -1, meals: -1, stars: -1, search: -1, home: 0, follow: 0, trip: 1, settings: 1 }
 /** Pagine interne delle Impostazioni: un passo più a destra delle Impostazioni stesse. */
 const place = (r: Route) => SIDE[r.name] + (r.name === 'settings' && r.page ? 0.5 : 0)
 
@@ -95,6 +100,7 @@ export default function App() {
     void weatherPending()
     void recolorTrips()
     void routesPending()
+    startSync()
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
@@ -144,6 +150,7 @@ export default function App() {
       {/* La chiave la ricrea a ogni schermata: cambiando pagina si riparte puliti. */}
       <ErrorBoundary key={screenKey}>
         {route.name === 'home' && <HomeScreen go={go} />}
+        {route.name === 'follow' && <HomeScreen go={go} follow={route.code} />}
         {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
         {route.name === 'settings' && <SettingsScreen page={route.page} go={go} />}
         {route.name === 'stars' && <StarsScreen go={go} />}

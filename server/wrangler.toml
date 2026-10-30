@@ -1,0 +1,14 @@
+# Server dei viaggi condivisi in diretta: vedi worker.js.
+# Pubblicazione (da questa cartella): npx wrangler deploy
+name = "mytrip-sync"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# L'id dello spazio KV lo crea `npx wrangler kv namespace create mytrip-sync`.
+[[kv_namespaces]]
+binding = "KV"
+id = "5de50cb092264124a1fbc06864d9ab74"
+
+# Ogni 15 minuti: riepiloghi giornalieri delle notifiche e novità in attesa (worker.js, `scheduled`).
+[triggers]
+crons = ["*/15 * * * *"]

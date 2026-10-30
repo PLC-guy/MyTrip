@@ -76,6 +76,9 @@ export default defineConfig({
       workbox: {
         // wasm: il codificatore JPEG degli export da condividere (~250 KB), anche offline.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
+        // Notifiche dei viaggi seguiti (public/push-sw.js): il resto del service
+        // worker lo genera Workbox.
+        importScripts: ['push-sw.js'],
         cleanupOutdatedCaches: true,
         navigateFallback: `${BASE}index.html`,
         runtimeCaching: [

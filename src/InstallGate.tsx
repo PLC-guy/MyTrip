@@ -140,6 +140,28 @@ function Instructions({ platform, inApp, install, oldIos }: { platform: Platform
   )
 }
 
+/**
+ * Link di un viaggio da seguire aperto in Safari (da WhatsApp si apre sempre
+ * qui, non nell'app installata). Il link va portato nell'app: si copia, e
+ * nell'app si incolla in «Segui un viaggio».
+ */
+function FollowHint() {
+  const [copied, setCopied] = useState(false)
+  if (!location.hash.startsWith('#/segui/')) return null
+  return (
+    <div className="note-box" style={{ textAlign: 'left', margin: '12px 0' }}>
+      <b>Hai ricevuto un viaggio da seguire.</b> Copia il link, installa MyTrip (o aprila, se ce l'hai già) e incollalo nella Home in «Segui il viaggio di qualcuno» (se hai già dei viaggi: «Nuovo viaggio» › «Segui un viaggio»).
+      <button
+        className="btn"
+        style={{ marginTop: 10 }}
+        onClick={() => void navigator.clipboard.writeText(location.href).then(() => setCopied(true), () => {})}
+      >
+        {copied ? 'Link copiato ✓' : 'Copia il link'}
+      </button>
+    </div>
+  )
+}
+
 /** `force`: solo in sviluppo, per vedere la guida di un dispositivo ('ios', 'ios18', 'android', 'app'). */
 export default function InstallGate({ force }: { force?: string }) {
   const env = useEnvironment()
@@ -155,8 +177,9 @@ export default function InstallGate({ force }: { force?: string }) {
         <img className="install-icon" src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
         <span className="label">Prima di partire</span>
         <h1>Installa MyTrip sulla Home</h1>
+        <FollowHint />
         <Instructions platform={platform} inApp={inApp} install={install} oldIos={oldIos} />
-        <p className="small">I viaggi restano sul tuo telefono: nessun account, nessun server.</p>
+        <p className="small">I viaggi restano sul tuo telefono: nessun account. Solo quelli che decidi di condividere passano, cifrati, da un server.</p>
       </div>
     </div>
   )

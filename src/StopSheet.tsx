@@ -15,6 +15,8 @@ interface Props {
   stop: Stop
   photos: Photo[]
   color: string
+  /** Viaggio seguito da un altro telefono (sync.ts): si guarda e basta. */
+  readOnly?: boolean
   /** Tappe vicine nella cronologia, per unire. */
   prev?: Stop
   next?: Stop
@@ -25,7 +27,7 @@ interface Props {
 
 type Ask = { kind: 'delete'; photo: Photo } | { kind: 'split'; photo: Photo } | { kind: 'merge'; other: Stop; into: 'prev' | 'next' } | { kind: 'meal'; photo?: Photo } | { kind: 'maps' }
 
-export default function StopSheet({ stop, photos, color, prev, next, onClose, onOpen }: Props) {
+export default function StopSheet({ stop, photos, color, readOnly, prev, next, onClose, onOpen }: Props) {
   const [note, setNote] = useState(stop.note ?? '')
   const [renaming, setRenaming] = useState<string>()
   const [ask, setAsk] = useState<Ask>()
@@ -39,6 +41,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
 
   const saveNote = () => {
     const clean = note.trim()
+    if (readOnly) return
     if (clean !== (stop.note ?? '')) void db.stops.update(stop.id, { note: clean || undefined })
   }
   const close = () => {
@@ -57,7 +60,9 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
     <Sheet onClose={close}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {renaming === undefined ? (
+          {readOnly ? (
+            <h2>{stopTitle(stop)}</h2>
+          ) : renaming === undefined ? (
             <h2 onClick={() => setRenaming(stop.name ?? stop.place ?? '')} style={{ cursor: 'text' }}>
               {stopTitle(stop)} <span className="edit-hint">✎</span>
             </h2>
@@ -91,6 +96,9 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
             </div>
           )}
         </div>
+        {readOnly ? (
+          stop.star && <span className="star-btn on" aria-label="Posto speciale">★</span>
+        ) : (
         <button
           className={`star-btn${stop.star ? ' on' : ''}`}
           aria-label={stop.star ? 'Togli dai posti speciali' : 'Segna come posto speciale'}
@@ -98,6 +106,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
         >
           {stop.star ? '★' : '☆'}
         </button>
+        )}
       </div>
 
       <div className="gallery">
@@ -113,7 +122,7 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
                 {/* La foto del piatto: da qui si sceglie il locale, cercando attorno a
                     questa foto. Un locale per tappa: scelto quello, le 🍽️ spariscono
                     e tornano se lo si toglie. */}
-                {!editing && !stop.meal && (
+                {!readOnly && !editing && !stop.meal && (
                   <button className="meal-icon" aria-label="Ho mangiato qui: scegli il locale" onClick={() => setAsk({ kind: 'meal', photo: p })}>
                     🍽️
                   </button>
@@ -142,8 +151,11 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
               <b>🍽️ {stop.meal.name}</b>
               {stop.meal.kind && <span className="k">{stop.meal.kind}</span>}
             </span>
-            <button className="small-link" onClick={() => setAsk({ kind: 'meal', photo: photos.find((p) => p.id === stop.meal?.photoId) })}>Cambia</button>
+            {!readOnly && <button className="small-link" onClick={() => setAsk({ kind: 'meal', photo: photos.find((p) => p.id === stop.meal?.photoId) })}>Cambia</button>}
           </div>
+          {readOnly ? (
+            stop.meal.rating ? <div className="meal-stars">{'★'.repeat(stop.meal.rating)}</div> : null
+          ) : (
           <div className="rating" role="radiogroup" aria-label="Voto">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -162,13 +174,18 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
               Togli
             </button>
           </div>
+          )}
         </div>
-      ) : (
+      ) : readOnly ? null : (
         <p className="small meal-hint">Hai mangiato qui? Tocca 🍽️ sotto la foto del piatto per scegliere il locale.</p>
       )}
 
       <div className="stack">
-        <textarea className="field" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
+        {readOnly ? (
+          stop.note && <p className="note-box" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{stop.note}</p>
+        ) : (
+          <textarea className="field" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
+        )}
         <div className="row">
           <button
             className="btn ghost"
@@ -184,9 +201,11 @@ export default function StopSheet({ stop, photos, color, prev, next, onClose, on
           </button>
         </div>
         {msg && <p className="small">{msg}</p>}
-        <button className={`btn ${editing ? '' : 'ghost '}small-btn`} onClick={() => setEditing(!editing)}>
-          {editing ? 'Fine modifica' : '✎ Modifica tappa'}
-        </button>
+        {!readOnly && (
+          <button className={`btn ${editing ? '' : 'ghost '}small-btn`} onClick={() => setEditing(!editing)}>
+            {editing ? 'Fine modifica' : '✎ Modifica tappa'}
+          </button>
+        )}
         {editing && (
           <p className="small" style={{ margin: 0 }}>
             Sotto ogni foto: ✂ divide la tappa da quella foto in poi, il cestino la toglie dall'app (resta in galleria).

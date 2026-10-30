@@ -489,3 +489,15 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 @keyframes nav-out-right { to { transform: translateX(100%); } }
 @keyframes nav-in-left { from { transform: translateX(-100%); } }
 .trips.room { padding-bottom: 60dvh; }
+
+/* Viaggi condivisi in diretta (sync.ts). */
+.share-line { margin: 6px 2px 0; }
+/* Chi segue vede i tratti ma non li cambia: il pulsante spento resta leggibile. */
+.leg:disabled { opacity: 1; cursor: default; }
+/* Notifiche di un viaggio seguito (NotifySheet.tsx): le scelte come la lista dei viaggi da esportare. */
+.notify-options { margin-top: 12px; }
+.notify-options .pick { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); cursor: pointer; }
+.notify-options .pick.on { border-color: var(--accent); }
+.notify-options .pick-text b { white-space: normal; }
+.notify-hour { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-weight: 700; }
+.notify-hour .field { width: auto; }
