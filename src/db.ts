@@ -293,12 +293,15 @@ export function stopTitle(s: Stop): string {
  * all'avvio (`convertThumbs`). ⚠️ Ogni nuova scrittura di immagini passa da qui.
  */
 const toBlob = <T>(v: T): T | Blob => (v instanceof ArrayBuffer || ArrayBuffer.isView(v) ? new Blob([v as ArrayBuffer], { type: 'image/jpeg' }) : v)
+// ⚠️ Dexie chiama l'hook anche quando la scheda non c'è (`get`/`bulkGet` di un id
+// assente → undefined): senza il controllo «Segui un viaggio» si fermava con
+// «Cannot read properties of undefined (reading 'coverImage')» (0.15.0–0.16.0).
 db.photos.hook('reading', (p) => {
-  p.thumb = toBlob(p.thumb) as Blob
+  if (p) p.thumb = toBlob(p.thumb) as Blob
   return p
 })
 db.trips.hook('reading', (t) => {
-  if (t.coverImage) t.coverImage = toBlob(t.coverImage) as Blob
+  if (t?.coverImage) t.coverImage = toBlob(t.coverImage) as Blob
   return t
 })
 
