@@ -51,7 +51,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   const [panel, setPanel] = useState<Panel>({ kind: 'none' })
   /**
    * Scambio animato fra due fogli (richiesta dell'utente, 30/10/2026): dal menu ⋯
-   * alla copertina o al colore il menu scende e l'altro sale; scelto, scende e il
+   * a condivisione, nome e tipo, copertina o colore il menu scende e l'altro sale; scelto, scende e il
    * menu risale. `leaving` = il foglio attuale sta uscendo; `swapped` = quello
    * nuovo entra salendo da sotto.
    */
@@ -651,7 +651,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <>
           <div className="stack">
             <button className="btn ghost" onClick={() => swapTo({ kind: 'share' })}>📡 Condividi in diretta{share ? ' · attiva' : ''}</button>
-            <button className="btn ghost" onClick={() => setPanel({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
+            <button className="btn ghost" onClick={() => swapTo({ kind: 'rename', value: trip.name, type: trip.kind ?? 'piacere' })}>Nome e tipo di viaggio</button>
             <button className="btn ghost" onClick={() => swapTo({ kind: 'cover' })}>Scegli la copertina</button>
             <button className="btn ghost" onClick={() => swapTo({ kind: 'color' })}>
               <span className="dot" style={{ background: trip.color, width: 12, height: 12, margin: 0 }} /> Colore della traccia
@@ -700,7 +700,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       )}
 
       {panel.kind === 'rename' && (
-        <Sheet onClose={() => setPanel({ kind: 'none' })}>
+        // Come copertina e colore: dal menu e ritorno al menu con lo scambio animato.
+        <Sheet onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped}>
           <h2>Nome e tipo</h2>
           <form
             className="stack"
@@ -709,7 +710,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               const value = panel.value.trim()
               if (!value) return
               void db.trips.update(id, { name: value, kind: panel.type })
-              setPanel({ kind: 'none' })
+              swapTo({ kind: 'menu' })
             }}
           >
             <input className="field" autoFocus value={panel.value} maxLength={80} onChange={(e) => setPanel({ ...panel, value: e.target.value })} />
