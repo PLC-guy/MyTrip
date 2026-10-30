@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId, type Trip } from './db'
+import { db, newId, toStored, type Trip } from './db'
 import { IconPhotos } from './icons'
 import Sheet from './Sheet'
 import { makeThumb } from './thumb'
@@ -36,7 +36,7 @@ export default function CoverSheet({ trip, onClose, leaving, swap }: { trip: Tri
     try {
       const thumb = await makeThumb(file)
       dropOldImage()
-      await db.trips.update(trip.id, { coverImage: thumb.blob, coverImageId: newId(), coverPhotoId: undefined })
+      await db.trips.update(trip.id, { coverImage: await toStored(thumb.blob), coverImageId: newId(), coverPhotoId: undefined })
       onClose()
     } catch {
       setError("Non riesco a leggere questa immagine.")

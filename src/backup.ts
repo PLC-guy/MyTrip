@@ -1,4 +1,4 @@
-import { db, type Photo, type Route, type Share, type Stop, type Trip } from './db'
+import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
@@ -51,13 +51,13 @@ function blobToDataUrl(blob: Blob): Promise<string> {
  * rete né dal service worker, e su Safari produce un Blob «normale» che
  * IndexedDB conserva senza sorprese.
  */
-function dataUrlToBlob(url: string): Blob {
+/** Byte da scrivere nell'archivio (mai Blob: vedi db.ts). */
+function dataUrlToStored(url: string): Blob {
   const comma = url.indexOf(',')
-  const type = /^data:([^;,]+)/.exec(url)?.[1] ?? 'image/jpeg'
   const bin = atob(url.slice(comma + 1))
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new Blob([bytes], { type })
+  return asStored(bytes)
 }
 
 /** Foto convertite insieme: abbastanza per andare veloci, non tante da riempire la memoria. */
@@ -165,18 +165,20 @@ export async function importFile(file: File): Promise<ImportSummary> {
     throw new Error("Il file viene da una versione più recente dell'app: aggiornala e riprova.")
   }
 
-  const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToBlob(p.thumb) }))
+  const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToStored(p.thumb) }))
   // ⚠️ Un file da condividere ha miniature ridotte: se quelle foto ci sono già
   // (per esempio un viaggio che torna indietro da chi l'ha ricevuto), si tengono
   // le miniature di qui, più nitide. Tutto il resto si aggiorna come sempre.
   if (data.lite) {
     const existing = await db.photos.bulkGet(photos.map((p) => p.id))
-    photos.forEach((p, i) => {
-      const old = existing[i]
-      if (old) p.thumb = old.thumb
-    })
+    await Promise.all(
+      photos.map(async (p, i) => {
+        const old = existing[i]
+        if (old) p.thumb = await toStored(old.thumb)
+      }),
+    )
   }
-  const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToBlob(t.coverImage) : undefined }))
+  const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToStored(t.coverImage) : undefined }))
 
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
   // indirizzi in memoria puntano alle immagini di prima.

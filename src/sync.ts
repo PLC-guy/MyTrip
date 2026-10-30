@@ -1,6 +1,6 @@
 import { liveQuery } from 'dexie'
 import { useSyncExternalStore } from 'react'
-import { db, type Photo, type Route, type Share, type Stop, type Trip } from './db'
+import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { decrypt, encrypt, fromB64url, randomB64url, sha256, toB64url } from './crypt'
 import { forgetThumbs } from './thumbUrl'
 
@@ -318,9 +318,18 @@ async function pullOnce(tripId: string): Promise<void> {
     const stopIds = new Set(index.stops.map((s) => s.id))
     const routeIds = new Set(index.routes.map((x) => x.id))
     const photoIds = new Set(index.photos.map((p) => p.id))
+    // Immagini già qui che si riscrivono: in byte PRIMA della transazione (db.ts).
+    const sameCover = old?.coverImageId && old.coverImageId === index.trip.coverImageId
+    const cover = sameCover && old.coverImage ? await toStored(old.coverImage) : undefined
+    const have = new Map(local.map((p) => [p.id, p]))
+    const moved = await Promise.all(
+      index.photos.flatMap((p) => {
+        const mine = have.get(p.id)
+        return mine && mine.thumb.size === p.size && mine.stopId !== p.stopId ? [toStored(mine.thumb).then((thumb) => ({ ...mine, ...withoutSize(p), thumb }))] : []
+      }),
+    )
     await db.transaction('rw', [db.trips, db.stops, db.routes, db.photos], async () => {
-      const sameCover = old?.coverImageId && old.coverImageId === index.trip.coverImageId
-      await db.trips.put({ ...index.trip, coverImage: sameCover ? old.coverImage : undefined })
+      await db.trips.put({ ...index.trip, coverImage: cover })
       await db.stops.bulkDelete((await db.stops.where('tripId').equals(tripId).primaryKeys()).filter((id) => !stopIds.has(id)))
       await db.stops.bulkPut(index.stops)
       await db.routes.bulkDelete((await db.routes.where('tripId').equals(tripId).primaryKeys()).filter((id) => !routeIds.has(id)))
@@ -329,11 +338,6 @@ async function pullOnce(tripId: string): Promise<void> {
       forgetThumbs(gone)
       await db.photos.bulkDelete(gone)
       // Foto spostate da una tappa all'altra (unire, dividere): basta il dato nuovo.
-      const have = new Map(local.map((p) => [p.id, p]))
-      const moved = index.photos.flatMap((p) => {
-        const mine = have.get(p.id)
-        return mine && mine.thumb.size === p.size && mine.stopId !== p.stopId ? [{ ...mine, ...withoutSize(p), thumb: mine.thumb }] : []
-      })
       await db.photos.bulkPut(moved)
     })
 
@@ -344,7 +348,7 @@ async function pullOnce(tripId: string): Promise<void> {
       const got = await Promise.all(
         todo.slice(i, i + PARALLEL).map(async (p): Promise<Photo | undefined> => {
           const data = await getPiece(share, `p/${p.id}`)
-          return data ? { ...withoutSize(p), thumb: new Blob([data], { type: 'image/jpeg' }) } : undefined
+          return data ? { ...withoutSize(p), thumb: asStored(data) } : undefined
         }),
       )
       const ok = got.filter((p): p is Photo => !!p)
@@ -357,7 +361,7 @@ async function pullOnce(tripId: string): Promise<void> {
       const data = await getPiece(share, `p/${coverId}`)
       if (data) {
         forgetThumbs([coverId])
-        await db.trips.update(tripId, { coverImage: new Blob([data], { type: 'image/jpeg' }) })
+        await db.trips.update(tripId, { coverImage: asStored(data) })
       }
     }
     // Versione segnata solo a lavoro finito: se qualcosa è mancato, si riprova al prossimo giro.

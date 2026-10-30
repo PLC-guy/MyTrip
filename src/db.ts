@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { forgetThumbs, markRead, markWritten } from './thumbUrl'
+import { forgetThumbs } from './thumbUrl'
 
 /**
  * Archivio locale (IndexedDB).
@@ -187,8 +187,7 @@ export interface Share {
   note?: { ids: string[]; since: number }
 }
 
-// Cache spenta: vedi le miniature rotte dopo unire/dividere, più sotto.
-export const db = new Dexie('mytrip', { cache: 'disabled' }) as Dexie & {
+export const db = new Dexie('mytrip') as Dexie & {
   trips: EntityTable<Trip, 'id'>
   stops: EntityTable<Stop, 'id'>
   photos: EntityTable<Photo, 'id'>
@@ -269,32 +268,73 @@ export function stopTitle(s: Stop): string {
  * seconda, la prima sparisce. Il nome scelto a mano di `intoId` resta.
  */
 /**
- * ⚠️ MINIATURE ROTTE DOPO UNIRE/DIVIDERE (30/10/2026): spostare una foto in
- * un'altra tappa riscrive la sua scheda nel database, e su Safari l'indirizzo
- * della miniatura già in memoria (thumbUrl.ts) smette di funzionare: compariva il
- * quadratino blu col punto interrogativo, anche riportando la foto indietro.
- * Ogni volta che si riscrive una foto, o un viaggio con la copertina caricata,
- * l'indirizzo si dimentica a scrittura conclusa e si ricrea dal dato nuovo.
- * ⚠️ 0.14.2: non bastava. La cache delle letture di Dexie 4 aggiornava le foto
- * già lette senza rileggerle, col Blob vecchio (morto) dentro: da qui
- * `cache: 'disabled'` e i numeri di giro di thumbUrl.ts (`markRead`,
- * `markWritten`), con l'avviso al COMMIT della transazione, non a metà.
+ * ⚠️ IMMAGINI SALVATE COME BYTE, MAI COME BLOB (0.15.0, 30/10/2026)
+ *
+ * Miniature rotte (quadratino blu col punto interrogativo) dopo unire o dividere
+ * le tappe, sull'iPhone; chiudendo e riaprendo l'app tornavano a posto. È un
+ * difetto di Safari (WebKit bug 235687, aperto dal 2022): un Blob letto da
+ * IndexedDB e salvato di nuovo non si riesce più a mostrare fino al riavvio.
+ * Spostare una foto riscrive tutta la sua scheda, miniatura compresa. Le due
+ * correzioni precedenti (0.13, 0.14.2: indirizzi dimenticati e ricreati) non
+ * potevano bastare: anche il Blob riletto era morto.
+ *
+ * Ora `Photo.thumb` e `Trip.coverImage` si scrivono come byte (`toStored`,
+ * `asStored`), che Safari tiene dentro la scheda senza file a parte; in lettura
+ * l'hook `reading` li trasforma in un Blob in memoria, così il resto dell'app
+ * continua a vedere un Blob. Le miniature salvate prima si convertono una volta
+ * all'avvio (`convertThumbs`). ⚠️ Ogni nuova scrittura di immagini passa da qui.
  */
+const toBlob = <T>(v: T): T | Blob => (v instanceof ArrayBuffer || ArrayBuffer.isView(v) ? new Blob([v as ArrayBuffer], { type: 'image/jpeg' }) : v)
 db.photos.hook('reading', (p) => {
-  markRead(p.thumb)
+  p.thumb = toBlob(p.thumb) as Blob
   return p
 })
 db.trips.hook('reading', (t) => {
-  markRead(t.coverImage)
+  if (t.coverImage) t.coverImage = toBlob(t.coverImage) as Blob
   return t
 })
-db.photos.hook('updating', (_mods, id, _p, tx) => {
-  tx.on('complete', () => markWritten([String(id)]))
-})
-db.trips.hook('updating', (_mods, _id, trip, tx) => {
-  const coverId = (trip as Trip).coverImageId
-  if (coverId) tx.on('complete', () => markWritten([coverId]))
-})
+
+/** Byte pronti da scrivere al posto di un Blob (il tipo resta Blob per il resto dell'app). */
+export const asStored = (bytes: ArrayBuffer | Uint8Array): Blob => bytes as unknown as Blob
+export const toStored = async (blob: Blob): Promise<Blob> => asStored(await blob.arrayBuffer())
+
+if (import.meta.env.DEV) {
+  // Rete di sicurezza in sviluppo: un Blob che sta per finire nell'archivio è un errore.
+  const warn = (o: { thumb?: unknown; coverImage?: unknown } | undefined) => {
+    if (o && (o.thumb instanceof Blob || o.coverImage instanceof Blob)) console.error('⚠️ Blob scritto nell\'archivio: usare toStored/asStored (db.ts)')
+  }
+  db.photos.hook('creating', (_id, p) => warn(p))
+  db.trips.hook('creating', (_id, t) => warn(t))
+  db.photos.hook('updating', (mods) => warn(mods as Partial<Photo>))
+  db.trips.hook('updating', (mods) => warn(mods as Partial<Trip>))
+}
+
+/** Una volta: le miniature salvate come Blob prima della 0.15.0 diventano byte. */
+export async function convertThumbs(): Promise<void> {
+  const ids = await db.photos.toCollection().primaryKeys()
+  for (let i = 0; i < ids.length; i += 20) {
+    const raw = await db.photos.where('id').anyOf(ids.slice(i, i + 20)).raw().toArray()
+    const todo: [string, ArrayBuffer][] = []
+    for (const p of raw) {
+      if (!(p.thumb instanceof Blob)) continue
+      try {
+        todo.push([p.id, await p.thumb.arrayBuffer()])
+      } catch {
+        // Illeggibile adesso: si riprova al prossimo avvio.
+      }
+    }
+    if (todo.length) await db.transaction('rw', db.photos, () => Promise.all(todo.map(([id, bytes]) => db.photos.update(id, { thumb: asStored(bytes) }))))
+  }
+  const trips = (await db.trips.toCollection().raw().toArray()).filter((t) => t.coverImage instanceof Blob)
+  for (const t of trips) {
+    try {
+      const bytes = await t.coverImage!.arrayBuffer()
+      await db.trips.update(t.id, { coverImage: asStored(bytes) })
+    } catch {
+      // Come sopra.
+    }
+  }
+}
 
 export async function mergeStops(intoId: string, fromId: string): Promise<void> {
   await db.transaction('rw', db.stops, db.photos, async () => {

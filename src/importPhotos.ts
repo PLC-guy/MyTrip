@@ -1,4 +1,4 @@
-import { db, newId, stopSummary, type Photo, type Stop } from './db'
+import { db, newId, stopSummary, toStored, type Photo, type Stop } from './db'
 import { photoKey, readMeta } from './exif'
 import { makeThumb } from './thumb'
 
@@ -77,7 +77,7 @@ export async function importPhotos(
     }
     try {
       const thumb = await makeThumb(file)
-      ready.push({ id: newId(), tripId, key, ...result.meta, thumb: thumb.blob, width: thumb.width, height: thumb.height, name: file.name })
+      ready.push({ id: newId(), tripId, key, ...result.meta, thumb: await toStored(thumb.blob), width: thumb.width, height: thumb.height, name: file.name })
     } catch {
       report.rejected.push({ name: file.name, reason: 'illeggibile' })
     }
