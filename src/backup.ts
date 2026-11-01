@@ -1,6 +1,7 @@
 import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
 import { currentPushSub } from './sync'
+import { cleanGrouping, getGrouping, setGrouping, type Grouping } from './grouping'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
 
@@ -36,6 +37,8 @@ interface ExportFile {
    * ad aggiornare il viaggio condiviso. ⚠️ Mai negli export da mandare ad altri.
    */
   shares?: Share[]
+  /** Solo nel backup completo (dalla 0.19.0): come si raggruppano le foto in tappe (grouping.ts). */
+  grouping?: Grouping
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -90,7 +93,7 @@ async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onPr
     onProgress?.(Math.min(i + PARALLEL, photos.length), photos.length)
   }
 
-  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}), ...(shares.length ? { shares } : {}) }
+  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}), ...(shares.length ? { shares } : {}), ...(kind === 'backup' ? { grouping: getGrouping() } : {}) }
   const json = JSON.stringify(head)
   const pieces: BlobPart[] = [json.slice(0, -1), ',"photos":[']
   parts.forEach((p, i) => pieces.push(i ? ',' : '', p))
@@ -205,6 +208,7 @@ export async function importFile(file: File): Promise<ImportSummary> {
   await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
     await db.trips.bulkPut(trips)
     if (data.kind === 'backup' && Array.isArray(data.shares)) await db.shares.bulkPut(shares)
+    if (data.kind === 'backup' && data.grouping) setGrouping(cleanGrouping(data.grouping))
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)
     if (Array.isArray(data.routes)) await db.routes.bulkPut(data.routes)

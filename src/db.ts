@@ -194,6 +194,12 @@ export interface Share {
    */
   ended?: number
   /**
+   * Solo follow: quando sono arrivate le ultime foto nuove. Un viaggio vecchio
+   * condiviso adesso riceve foto con date vecchie: è questo, non la data delle
+   * foto, a dire che ci sono novità (osservazione dell'utente, 1/11/2026).
+   */
+  news?: number
+  /**
    * Solo follow: notifiche scelte da chi segue. `each` = a ogni novità (al più
    * una ogni 15 minuti), `daily` = un riepilogo al giorno all'ora `hour`.
    * `sub` = impronta dell'iscrizione sul server, per toglierla.

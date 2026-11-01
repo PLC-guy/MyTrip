@@ -1,14 +1,13 @@
 import { db, newId, stopSummary, toStored, type Photo, type Stop } from './db'
 import { photoKey, readMeta } from './exif'
 import { makeThumb } from './thumb'
+import { getGrouping } from './grouping'
 
-/**
- * Due foto appartengono alla stessa tappa se sono state scattate entro questa
- * distanza dal centro della tappa e entro questo tempo dai suoi estremi.
- * Valori di partenza: si regolano provando con viaggi veri.
+/*
+ * Una foto entra in una tappa se è stata scattata entro una distanza dal suo
+ * centro e entro un tempo dai suoi estremi: valori scelti in Impostazioni ›
+ * Tappe (grouping.ts, partenza 150 m e 1 ora).
  */
-export const STOP_RADIUS_M = 150
-export const STOP_GAP_MS = 60 * 60 * 1000
 
 /** Foto lette prima di salvarle nell'archivio. */
 const BATCH = 10
@@ -89,6 +88,7 @@ export async function importPhotos(
 
 /** Mette ogni foto nuova in una tappa esistente vicina, o ne crea una. */
 async function assignToStops(tripId: string, incoming: Omit<Photo, 'stopId'>[]): Promise<void> {
+  const { radiusM, gapMin } = getGrouping()
   await db.transaction('rw', db.stops, db.photos, async () => {
     const stops = await db.stops.where('tripId').equals(tripId).toArray()
     const members = new Map<string, Pick<Photo, 'lat' | 'lon' | 'time' | 'taken'>[]>()
@@ -101,9 +101,9 @@ async function assignToStops(tripId: string, incoming: Omit<Photo, 'stopId'>[]):
       let best = Infinity
       for (const s of stops) {
         const gap = p.time < s.start ? s.start - p.time : p.time > s.end ? p.time - s.end : 0
-        if (gap > STOP_GAP_MS) continue
+        if (gap > gapMin * 60_000) continue
         const d = distanceM(s.lat, s.lon, p.lat, p.lon)
-        if (d <= STOP_RADIUS_M && d < best) {
+        if (d <= radiusM && d < best) {
           best = d
           target = s
         }

@@ -49,6 +49,9 @@ const MIN_ROUTE_SHARE = 0.7
 const TIME_MARGIN_MIN = 20
 /** Ore di guida plausibili in 24 ore. */
 const MAX_DRIVE_H = 10
+/** Sotto questa distanza due tappe sono nello stesso posto: niente tratto da mostrare (fmtKm darebbe «0,0 km»). */
+export const SAME_PLACE_KM = 0.05
+
 /** Spostamento oltre il quale il percorso salvato non vale più. */
 export const MOVE_TOLERANCE_M = 150
 

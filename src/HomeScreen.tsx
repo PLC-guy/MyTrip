@@ -20,6 +20,17 @@ const KIND_KEY = 'mytrip:home-kind'
 /** «In viaggio adesso»: ultima foto entro 48 ore (scelta dell'utente, 30/10/2026). */
 const LIVE_MS = 48 * 3600_000
 
+/** Sezioni della Home chiuse (richiesta dell'utente, 1/11/2026), ricordate sul dispositivo. */
+const CLOSED_KEY = 'mytrip:home-closed'
+type Section = 'own' | 'follow'
+function readClosed(): Section[] {
+  try {
+    return JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '[]') as Section[]
+  } catch {
+    return []
+  }
+}
+
 interface TripRow {
   trip: Trip
   stops: Stop[]
@@ -101,14 +112,38 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
    * propri). Paesi, Locali e Speciali lo escludono; Cerca lo segna.
    */
   const ownRows = useMemo(() => allRows?.filter((r) => r.share?.role !== 'follow'), [allRows])
-  const followed = useMemo(() => allRows?.filter((r) => r.share?.role === 'follow') ?? [], [allRows])
+  // In viaggio adesso: l'ultima foto ha meno di 48 ore. Novità: sono arrivate foto
+  // nuove nelle ultime 48 ore, anche se scattate tempo fa (un viaggio vecchio
+  // condiviso adesso). I seguiti vanno in ordine di novità.
+  const live = (r: TripRow) => r.stops.length > 0 && Date.now() - r.stops[r.stops.length - 1].end < LIVE_MS
+  const fresh = (r: TripRow) => r.share?.news != null && Date.now() - r.share.news < LIVE_MS
+  const followed = useMemo(() => {
+    const when = (r: TripRow) => Math.max(r.share?.news ?? 0, r.stops.length ? r.stops[r.stops.length - 1].end : 0)
+    return (allRows?.filter((r) => r.share?.role === 'follow') ?? []).sort((a, b) => when(b) - when(a))
+  }, [allRows])
+  const [closed, setClosed] = useState<Section[]>(readClosed)
+  const toggle = (s: Section) => {
+    const next = closed.includes(s) ? closed.filter((c) => c !== s) : [...closed, s]
+    setClosed(next)
+    try {
+      localStorage.setItem(CLOSED_KEY, JSON.stringify(next))
+    } catch {
+      // Senza memoria del browser vale fino alla chiusura.
+    }
+  }
+  const sectionTitle = (s: Section, title: string, count: number) => (
+    <button className="section-toggle" onClick={() => toggle(s)} aria-expanded={!closed.includes(s)}>
+      <span className="chev" aria-hidden="true">{closed.includes(s) ? '▸' : '▾'}</span>
+      <h2 className="section-title">{title}</h2>
+      {closed.includes(s) && count > 0 && <span className="label soft">{count}</span>}
+    </button>
+  )
   // Il filtro compare solo se ci sono viaggi di tutti e due i tipi; senza, vale «Tutti».
   const mixed = new Set(ownRows?.map((r) => r.trip.kind ?? 'piacere')).size > 1
   const activeKind = mixed ? kindFilter : 'tutti'
   const rows = useMemo(() => (activeKind === 'tutti' ? ownRows : ownRows?.filter((r) => (r.trip.kind ?? 'piacere') === activeKind)), [ownRows, activeKind])
-  const live = (r: TripRow) => r.stops.length > 0 && Date.now() - r.stops[r.stops.length - 1].end < LIVE_MS
-  // Sezione dei seguiti in cima se uno è in corso, o se viaggi propri non ce ne sono.
-  const followFirst = followed.some(live) || (ownRows?.length ?? 0) === 0
+  // Sezione dei seguiti in cima se uno è in corso o ha novità, o se viaggi propri non ce ne sono.
+  const followFirst = followed.some((r) => live(r) || fresh(r)) || (ownRows?.length ?? 0) === 0
 
   /**
    * Viaggio selezionato per l'anteprima: la mappa mostra solo lui, con le sue
@@ -195,6 +230,8 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
             </span>
             {follow && !follow.ended && live(r) ? (
               <span className="live-badge">in viaggio adesso</span>
+            ) : follow && !follow.ended && fresh(r) ? (
+              <span className="live-badge news">novità</span>
             ) : (
               r.countries.length > 0 && <span className="label soft">{r.countries.join(' · ')}</span>
             )}
@@ -248,10 +285,10 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const followedSection = followed.length > 0 && (
     <>
       <div className="section-head">
-        <h2 className="section-title">Viaggi che segui</h2>
+        {sectionTitle('follow', 'Viaggi che segui', followed.length)}
         <button className="small-link" onClick={() => setFollowing('')}>+ Segui</button>
       </div>
-      <div className={`trips${selected && !followFirst ? ' room' : ''}`}>{followed.map(card)}</div>
+      {!closed.includes('follow') && <div className={`trips${selected && !followFirst ? ' room' : ''}`}>{followed.map(card)}</div>}
     </>
   )
 
@@ -352,14 +389,14 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         // aperta l'app, non dopo aver scorso l'elenco (scelta dell'utente, 27/10/2026).
         // Chi ha solo viaggi seguiti vede un invito più discreto.
         <div className="section-head">
-          <h2 className="section-title">I miei viaggi</h2>
+          {sectionTitle('own', 'I miei viaggi', ownRows.length)}
           <button className={ownRows.length ? 'btn small-btn' : 'btn ghost small-btn'} onClick={() => setCreating(true)}>
             <IconPlus /> {ownRows.length ? 'Nuovo viaggio' : 'Crea un tuo viaggio'}
           </button>
         </div>
       )}
 
-      {mixed && (
+      {mixed && !closed.includes('own') && (
         <div className="segmented" role="radiogroup" aria-label="Quali viaggi">
           {KIND_FILTERS.map((f) => (
             <button
@@ -379,7 +416,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
         </div>
       )}
 
-      <div className={`trips${selected && (followFirst || !followed.length) ? ' room' : ''}`}>{rows.map(card)}</div>
+      {!closed.includes('own') && <div className={`trips${selected && (followFirst || !followed.length) ? ' room' : ''}`}>{rows.map(card)}</div>}
 
       {!followFirst && followedSection}
 

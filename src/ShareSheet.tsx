@@ -4,6 +4,7 @@ import { db, type Trip } from './db'
 import { fmtStamp } from './format'
 import Sheet from './Sheet'
 import { followLink, startSharing, stopSharing, useSyncStatus } from './sync'
+import { QrCode } from './Qr'
 
 /**
  * «Condividi in diretta» (menu ⋯ del viaggio): chi riceve il link segue il
@@ -15,6 +16,7 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
   const [working, setWorking] = useState(false)
   const [msg, setMsg] = useState<string>()
   const [confirmStop, setConfirmStop] = useState(false)
+  const [showQr, setShowQr] = useState(false)
 
   async function run(job: () => Promise<void>) {
     setWorking(true)
@@ -99,7 +101,14 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
           <div className="stack">
             <button className="btn" onClick={() => void sendLink()}>Invia il link</button>
             <button className="btn ghost" onClick={() => void copyLink()}>Copia il link</button>
+            <button className="btn ghost" onClick={() => setShowQr(!showQr)}>{showQr ? 'Nascondi il QR code' : 'Mostra il QR code'}</button>
           </div>
+          {showQr && (
+            <div className="qr-box">
+              <QrCode text={followLink(share)} />
+              <p className="small">Chi segue lo inquadra da MyTrip: «Segui un viaggio» › «Inquadra il QR code». Vale quanto il link: mostralo solo a chi vuoi.</p>
+            </div>
+          )}
           <p className="small">
             Le novità si aggiornano da sole con l'app aperta, qualche secondo dopo ogni modifica. Senza connessione restano in coda e partono appena torna.
           </p>

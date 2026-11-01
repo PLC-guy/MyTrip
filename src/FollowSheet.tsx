@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import Sheet from './Sheet'
 import { follow, parseFollowCode } from './sync'
+import { QrScanner } from './Qr'
 
 /**
  * «Segui un viaggio»: si incolla il link ricevuto da chi viaggia. ⚠️ Sull'iPhone
@@ -12,7 +13,12 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
   const [text, setText] = useState(initial ?? '')
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string>()
+  const [scanning, setScanning] = useState(false)
   const code = parseFollowCode(text)
+  const onCode = useCallback((t: string) => {
+    setScanning(false)
+    setText(t)
+  }, [])
 
   async function start() {
     if (!code) return
@@ -30,7 +36,7 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
   return (
     <Sheet onClose={onClose} locked={working}>
       <h2>Segui un viaggio</h2>
-      <p className="small">Incolla il link che hai ricevuto. Vedrai il viaggio e le foto nuove man mano che arrivano; potrai solo guardare.</p>
+      <p className="small">Incolla il link che hai ricevuto. Vedrai il viaggio e le foto nuove man mano che arrivano, potrai solo guardare.</p>
       <div className="stack">
         <textarea className="field" placeholder="https://…#/segui/…" value={text} onChange={(e) => setText(e.target.value)} disabled={working} />
         {!text && navigator.clipboard?.readText && (
@@ -38,13 +44,19 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
             Incolla
           </button>
         )}
+        {!text && !!navigator.mediaDevices?.getUserMedia && (
+          <button className="btn ghost" onClick={() => setScanning(!scanning)}>
+            {scanning ? 'Chiudi la fotocamera' : 'Inquadra il QR code'}
+          </button>
+        )}
+        {scanning && !text && <QrScanner onCode={onCode} />}
         {text && !code && <p className="small" style={{ margin: 0 }}>Questo non sembra un link di MyTrip.</p>}
         {working && (
           <>
             <div className="progress">
               <div className="indeterminate" />
             </div>
-            <p className="small" style={{ margin: 0 }}>Scarico il viaggio: con molte foto ci vuole un po'.</p>
+            <p className="small" style={{ margin: 0 }}>Scarico il viaggio. Se contiene molte foto potrebbe volerci un po'.</p>
           </>
         )}
         <button className="btn" disabled={!code || working} onClick={() => void start()}>

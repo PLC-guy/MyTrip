@@ -16,8 +16,8 @@ import { setBusy } from './update'
 import { shareExport } from './exportFlow'
 import { exportKml } from './kml'
 import { fmtKm, tripStats } from './stats'
-import { TRANSPORTS, transportOf } from './transport'
-import { legsToLines } from './legs'
+import { CHOOSABLE, chosenKey, transportOf } from './transport'
+import { legsToLines, SAME_PLACE_KM } from './legs'
 import { useLegs } from './useLegs'
 import { routesPending } from './routing'
 import { describeWeather, weatherPending } from './weather'
@@ -187,7 +187,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }, [data?.stops, dayFilter])
   const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1).filter(inDay), [legs, color, play, inDay])
   const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color).filter(inDay), [legs, color, inDay])
-  const warnings = legs.filter((l) => l.warning)
+  const warnings = legs.filter((l) => l.warning && l.straightKm >= SAME_PLACE_KM)
 
   // Percorsi mancanti di questo viaggio, prima degli altri.
   useEffect(() => {
@@ -253,6 +253,25 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }
 
   const openLeg = (stopId: string) => setPanel({ kind: 'transport', stopId })
+
+  /**
+   * Avviso «tratti da verificare» (richiesta dell'utente, 1/11/2026): invece di
+   * aprire subito la scelta del mezzo, che non diceva di quale tratto si
+   * trattasse, si scorre fino al tratto e lo si centra nello spazio sotto
+   * l'intestazione fissa, con la tappa prima e quella dopo visibili. Il tratto
+   * lampeggia; un tocco su di lui apre la scelta.
+   */
+  const showLeg = (stopId: string) => {
+    const el = document.getElementById(`leg-${stopId}`)
+    if (!el) return
+    const bar = document.querySelector('.page > .bar')?.getBoundingClientRect().bottom ?? 0
+    const r = el.getBoundingClientRect()
+    const top = window.scrollY + r.top + r.height / 2 - (bar + (window.innerHeight - bar) / 2)
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    el.classList.remove('flash')
+    void el.offsetWidth
+    el.classList.add('flash')
+  }
 
   const openAt = (sid: string) => {
     setPlay(null)
@@ -342,11 +361,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           {warnings.length > 0 && !readOnly && (
             <button
               className="note-box warm warn-banner"
-              onClick={() => {
-                const leg = warnings[0]
-                document.getElementById(`leg-${leg.toStopId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                openLeg(leg.toStopId)
-              }}
+              onClick={() => showLeg(warnings[0].toStopId)}
             >
               ⚠️ {plural(warnings.length, 'tratto da verificare', 'tratti da verificare')}: il mezzo dedotto non torna. Tocca per vedere il primo.
             </button>
@@ -362,8 +377,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
 
       {data.stops.length === 0 && (
         <div className="empty-state">
-          <h2>Aggiungi le foto</h2>
-          <p>{readOnly ? 'Ancora nessuna foto: arriveranno qui man mano.' : 'Scegli le foto del viaggio dalla Libreria foto. Entrano solo quelle con data e posizione.'}</p>
+          <h2>{readOnly ? 'Ancora nessuna foto' : 'Aggiungi le foto'}</h2>
+          <p>{readOnly ? 'Arriveranno qui man mano, si staranno preparando.' : 'Scegli le foto del viaggio dalla Libreria foto. Entrano solo quelle con data e posizione.'}</p>
         </div>
       )}
 
@@ -446,7 +461,9 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             const w = s.weather && describeWeather(s.weather.code)
             return (
               <Fragment key={s.id}>
-                {leg && (
+                {/* Tappe nello stesso posto (sotto i 50 m, «0,0 km»): niente tratto finto
+                    fra le due (richiesta dell'utente, 1/11/2026); restano due schede. */}
+                {leg && leg.straightKm >= SAME_PLACE_KM && (
                   // Mezzo scelto: pieno. Dedotto: tratteggiato, col «?». Da verificare: ⚠️.
                   <button id={`leg-${s.id}`} className={`leg${leg.inferred ? '' : ' set'}${leg.warning && !readOnly ? ' warn' : ''}`} disabled={readOnly} onClick={() => openLeg(s.id)}>
                     <span className="leg-label">
@@ -540,8 +557,16 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               {leg.warning && <p style={{ margin: '8px 0 0' }}>⚠️ {leg.warning}</p>}
             </div>
             <div className="transport-grid">
-              {TRANSPORTS.map((t) => (
-                <button key={t.key} className={to.transport === t.key ? 'on' : ''} onClick={() => setStop({ transport: t.key })}>
+              {/* Scelto il mezzo, il foglio si chiude da solo (richiesta dell'utente, 1/11/2026). */}
+              {CHOOSABLE.map((t) => (
+                <button
+                  key={t.key}
+                  className={chosenKey(to.transport) === t.key ? 'on' : ''}
+                  onClick={() => {
+                    setStop({ transport: t.key })
+                    setPanel({ kind: 'none' })
+                  }}
+                >
                   <span>{t.icon}</span>
                   {t.label}
                 </button>
@@ -549,7 +574,13 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             </div>
             <div className="stack">
               {to.transport && (
-                <button className="btn ghost" onClick={() => setStop({ transport: undefined })}>
+                <button
+                  className="btn ghost"
+                  onClick={() => {
+                    setStop({ transport: undefined })
+                    setPanel({ kind: 'none' })
+                  }}
+                >
                   Lascia decidere all'app
                 </button>
               )}
@@ -559,9 +590,6 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                   Disegna in linea dritta (se il percorso stimato non è quello che hai fatto)
                 </label>
               )}
-              <button className="btn" onClick={() => setPanel({ kind: 'none' })}>
-                Fatto
-              </button>
             </div>
             <p className="small">
               Il percorso è una stima: la strada più veloce con quel mezzo, non necessariamente quella che hai fatto. Treno e barche senza una tratta mappata restano in linea dritta.

@@ -15,6 +15,7 @@ import { THEMES, setTheme, useTheme } from './theme'
 import { setProfile, useProfile } from './profile'
 import { pushAll } from './sync'
 import { refreshThumbs, type RefreshReport } from './testTools'
+import { DEFAULT_GROUPING, GAP_LIMITS, getGrouping, RADIUS_LIMITS, setGrouping, useGrouping } from './grouping'
 import type { Route } from './App'
 
 /**
@@ -26,10 +27,11 @@ import type { Route } from './App'
  * 27/10/2026. Le pagine stanno nell'indirizzo (#/impostazioni/aspetto), così
  * «indietro» e un aggiornamento automatico riportano dove si era.
  */
-export type SettingsPage = 'viaggiatore' | 'aspetto' | 'backup'
+export type SettingsPage = 'viaggiatore' | 'tappe' | 'aspetto' | 'backup'
 
 export default function SettingsScreen({ page, go }: { page?: SettingsPage; go: (r: Route) => void }) {
   if (page === 'viaggiatore') return <TravelerPage go={go} />
+  if (page === 'tappe') return <GroupingPage go={go} />
   if (page === 'aspetto') return <AppearancePage go={go} />
   if (page === 'backup') return <BackupPage go={go} />
   return <SettingsHome go={go} />
@@ -77,6 +79,7 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
 
       <div className="list nav-list">
         <NavItem title="Il viaggiatore" onClick={() => go({ name: 'settings', page: 'viaggiatore' })} />
+        <NavItem title="Tappe" onClick={() => go({ name: 'settings', page: 'tappe' })} />
         <NavItem title="Aspetto" onClick={() => go({ name: 'settings', page: 'aspetto' })} />
         {/* Il promemoria si vede anche qui: un backup da fare non deve sparire dietro un livello. */}
         <NavItem
@@ -207,6 +210,61 @@ function TravelerPage({ go }: { go: (r: Route) => void }) {
       {saved && <p className="small">Salvato.</p>}
       <p className="small">
         Chi segue i viaggi che condividi in diretta li vede come «Viaggio di {name.trim() || 'Alex'}». Il nome lascia il telefono solo con i viaggi condivisi, cifrato come il resto del viaggio.
+      </p>
+    </div>
+  )
+}
+
+/** Distanza e tempo con cui le foto si raggruppano in tappe (grouping.ts). */
+function GroupingPage({ go }: { go: (r: Route) => void }) {
+  const g = useGrouping()
+  const [radius, setRadius] = useState(String(g.radiusM))
+  const [gap, setGap] = useState(String(g.gapMin))
+  const [saved, setSaved] = useState(false)
+  const changed = Number(radius) !== g.radiusM || Number(gap) !== g.gapMin
+  const isDefault = g.radiusM === DEFAULT_GROUPING.radiusM && g.gapMin === DEFAULT_GROUPING.gapMin
+
+  return (
+    <div className="page">
+      <Bar title="Tappe" back={() => go({ name: 'settings' })} />
+      <p className="small">
+        Una foto entra nella stessa tappa delle altre se è stata scattata vicino E poco dopo. Se ti sposti di più, o passa più tempo, comincia una tappa nuova.
+      </p>
+      <form
+        className="traveler-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setGrouping({ radiusM: Number(radius), gapMin: Number(gap) })
+          // Valori fuori dai limiti tornano dentro: le caselle mostrano quelli salvati.
+          const next = getGrouping()
+          setRadius(String(next.radiusM))
+          setGap(String(next.gapMin))
+          setSaved(true)
+        }}
+      >
+        <label className="small" htmlFor="grp-radius">Distanza massima dal centro della tappa (metri)</label>
+        <input id="grp-radius" className="field" type="number" inputMode="numeric" min={RADIUS_LIMITS.min} max={RADIUS_LIMITS.max} value={radius} onChange={(e) => { setRadius(e.target.value); setSaved(false) }} />
+        <label className="small" htmlFor="grp-gap">Tempo massimo fra una foto e la tappa (minuti)</label>
+        <input id="grp-gap" className="field" type="number" inputMode="numeric" min={GAP_LIMITS.min} max={GAP_LIMITS.max} value={gap} onChange={(e) => { setGap(e.target.value); setSaved(false) }} />
+        <button className="btn" type="submit" disabled={!changed || !radius || !gap}>Salva</button>
+        {!isDefault && (
+          <button
+            className="btn ghost"
+            type="button"
+            onClick={() => {
+              setGrouping(DEFAULT_GROUPING)
+              setRadius(String(DEFAULT_GROUPING.radiusM))
+              setGap(String(DEFAULT_GROUPING.gapMin))
+              setSaved(true)
+            }}
+          >
+            Torna a {DEFAULT_GROUPING.radiusM} m e {DEFAULT_GROUPING.gapMin} minuti
+          </button>
+        )}
+      </form>
+      {saved && <p className="small">Salvato.</p>}
+      <p className="small">
+        Vale per le foto che aggiungi da ora in poi: le tappe già fatte restano come sono. Distanza da {RADIUS_LIMITS.min} a {RADIUS_LIMITS.max} m, tempo da {GAP_LIMITS.min} minuti a 24 ore. Le scelte entrano nel backup completo.
       </p>
     </div>
   )

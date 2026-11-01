@@ -21,7 +21,7 @@ const LANGS = 'it,en'
  * precedente e rimaste con un nome in alfabeto non latino si richiedono una
  * volta sola con le regole nuove.
  */
-const GEO_VERSION = 3 // 3: si salva anche il codice del paese (mappa dei paesi visitati)
+const GEO_VERSION = 4 // 3: codice del paese; 4: località anche da «administrative»/provincia (Giappone)
 const NON_LATIN = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u
 
 let running = false
@@ -49,7 +49,9 @@ const SQUARE = /^(piazza|piazzale|piazzetta|largo|campo|plaza|praça|place|squar
  */
 function pickPlace(reply: NominatimReply): { place?: string; country?: string; countryCode?: string } {
   const a = reply.address ?? {}
-  const locality = a.village ?? a.town ?? a.city ?? a.municipality ?? a.hamlet ?? a.county ?? a.state
+  // ⚠️ In Giappone l'indirizzo non ha city/town ma «administrative» (es. un'area
+  // aeroportuale): senza ripiego la tappa restava con le coordinate come nome.
+  const locality = a.village ?? a.town ?? a.city ?? a.municipality ?? a.hamlet ?? a.city_district ?? a.suburb ?? a.county ?? a.administrative ?? a.province ?? a.state ?? a.region
   const nice = reply.category && (NICE_CATEGORIES.has(reply.category) || (reply.category === 'amenity' && NICE_AMENITIES.has(reply.type ?? '')))
   let detail: string | undefined
   if (nice && reply.name) detail = reply.name
@@ -64,8 +66,9 @@ function pickPlace(reply: NominatimReply): { place?: string; country?: string; c
   return { place, country: a.country, countryCode: a.country_code?.toUpperCase() }
 }
 
-/** Ogni tappa chiesta con regole più vecchie si richiede una volta. */
-const needsName = (s: Stop) => !s.geocoded || s.geoV !== GEO_VERSION
+/** Le tappe chieste con regole più vecchie si richiedono una volta. */
+// Le tappe della versione 3 si richiedono solo se sono rimaste senza nome.
+const needsName = (s: Stop) => !s.geocoded || (s.geoV ?? 0) < 3 || (!s.place && (s.geoV ?? 0) < GEO_VERSION)
 
 /**
  * Cosa aggiornare. Il nome del luogo si sostituisce solo se manca o è in un

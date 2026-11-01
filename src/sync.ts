@@ -351,6 +351,7 @@ async function pullOnce(tripId: string): Promise<void> {
 
     const sizes = new Map(local.map((p) => [p.id, p.thumb.size]))
     const todo = index.photos.filter((p) => sizes.get(p.id) !== p.size)
+    if (todo.some((p) => !sizes.has(p.id))) await db.shares.update(tripId, { news: Date.now() })
     for (let i = 0; i < todo.length; i += PARALLEL) {
       setStatus(tripId, { busy: true, done: i, total: todo.length })
       const got = await Promise.all(
