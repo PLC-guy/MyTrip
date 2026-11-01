@@ -40,7 +40,7 @@ export async function exportKml(tripId: string): Promise<File> {
 
   // Il percorso segue le strade stimate, tratto per tratto (dritto dove non c'è).
   const routes = new Map((await db.routes.where('tripId').equals(tripId).toArray()).map((r) => [r.id, r]))
-  const route = tripLegs(stops, routes)
+  const route = tripLegs(stops, routes, trip.nights)
     .flatMap((l, i) => (i === 0 ? l.points : l.points.slice(1)))
     .map(([lat, lon]) => `${lon},${lat},0`)
     .join(' ')

@@ -1,5 +1,9 @@
 import { db, type Route, type Stop } from './db'
+import { itinerary } from './nights'
 import { legMode, profileOf, routeId, routeIsFresh } from './legs'
+
+/** Gli estremi di un tratto: una tappa o un alloggio (nights.ts). */
+type Point = Pick<Stop, 'lat' | 'lon'>
 
 /**
  * Percorsi stimati fra le tappe, dal servizio pubblico Valhalla della comunità
@@ -91,7 +95,7 @@ type Outcome = Pick<Route, 'status' | 'coords' | 'km' | 'minutes' | 'ferry' | 'v
 export const ROUTE_V = 2
 const MOTOR = new Set(['auto', 'motor_scooter', 'bus'])
 
-async function ask(from: Stop, to: Stop, profile: string): Promise<Outcome> {
+async function ask(from: Point, to: Point, profile: string): Promise<Outcome> {
   const first = await askOnce(from, to, profile)
   if (first === 'retry' || first.status !== 'none' || !MOTOR.has(profile)) return first
   await pause(PAUSE_MS)
@@ -100,7 +104,7 @@ async function ask(from: Stop, to: Stop, profile: string): Promise<Outcome> {
   return { ...bike, minutes: undefined, via: 'bicycle' }
 }
 
-async function askOnce(from: Stop, to: Stop, profile: string): Promise<Outcome> {
+async function askOnce(from: Point, to: Point, profile: string): Promise<Outcome> {
   const body = {
     locations: [
       { lat: from.lat, lon: from.lon },
@@ -145,7 +149,8 @@ export async function routesPending(tripId?: string): Promise<void> {
   try {
     const trips = (await db.trips.toArray()).sort((a, b) => (a.id === first ? -1 : b.id === first ? 1 : 0))
     outer: for (const trip of trips) {
-      const stops = await db.stops.where('tripId').equals(trip.id).sortBy('start')
+      // Anche i tratti verso e dagli alloggi delle notti (nights.ts).
+      const stops = itinerary(await db.stops.where('tripId').equals(trip.id).sortBy('start'), (s) => (s as Stop).first, trip.nights)
       for (let i = 1; i < stops.length; i++) {
         const [from, to] = [stops[i - 1], stops[i]]
         const profile = profileOf(legMode(from, to).mode)

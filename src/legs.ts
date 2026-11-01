@@ -1,7 +1,8 @@
-import type { Route, Stop } from './db'
+import type { Lodging, Route, Stop } from './db'
 import { distanceM } from './importPhotos'
 import type { MapLine } from './MapView'
 import { transportOf } from './transport'
+import { isNight, itinerary } from './nights'
 import { fmtDuration } from './format'
 
 /**
@@ -93,6 +94,9 @@ export function routeIsFresh(r: Route, from: LegStop, to: LegStop): boolean {
 
 export interface LegInfo {
   toStopId: string
+  fromStopId: string
+  /** Tratto da o verso un alloggio (nights.ts): niente avvisi, il mezzo non si sceglie. */
+  night: boolean
   mode: string
   inferred: boolean
   /** Icona ed etichetta da mostrare (un traghetto trovato dal percorso vince sull'auto dedotta). */
@@ -116,6 +120,8 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
   const t = transportOf(mode)
   const base: LegInfo = {
     toStopId: to.id,
+    fromStopId: from.id,
+    night: isNight(from.id) || isNight(to.id),
     mode,
     inferred,
     icon: t?.icon ?? '•',
@@ -182,10 +188,19 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
   return info
 }
 
-/** Tutti i tratti di un viaggio, nell'ordine delle tappe. */
-export function tripLegs(stops: LegStop[], routes: Map<string, Route>): LegInfo[] {
+/**
+ * Tutti i tratti di un viaggio, nell'ordine delle tappe, passando per gli
+ * alloggi delle notti (nights.ts). ⚠️ Non sono allineati alle tappe per indice:
+ * si cercano per `toStopId`.
+ */
+export function tripLegs(stops: (LegStop & { first: string })[], routes: Map<string, Route>, nights?: Record<string, Lodging>): LegInfo[] {
+  const seq = itinerary(stops, (s) => (s as LegStop & { first: string }).first, nights)
   const out: LegInfo[] = []
-  for (let i = 1; i < stops.length; i++) out.push(legInfo(stops[i - 1], stops[i], routes))
+  for (let i = 1; i < seq.length; i++) {
+    const leg = legInfo(seq[i - 1], seq[i], routes)
+    // Verso o da un alloggio: l'ora non si conosce, gli avvisi sui tempi non valgono.
+    out.push(leg.night ? { ...leg, warning: undefined } : leg)
+  }
   return out
 }
 

@@ -25,6 +25,11 @@ const PHOTON = 'https://photon.komoot.io/reverse'
 const OVERPASS = 'https://overpass-api.de/api/interpreter'
 /** Raggi di ricerca, in metri: il primo all'apertura, il secondo con «Cerca più lontano». */
 export const RADII = [150, 400] as const
+/**
+ * Alloggi (pernottamenti, nights.ts): si cerca attorno all'ultima tappa del
+ * giorno, che spesso è la cena, non l'albergo: raggi più larghi.
+ */
+export const SLEEP_RADII = [600, 2000] as const
 /** Locali mostrati al massimo. */
 const MAX = 100
 /** ⚠️ Photon ne restituisce al massimo 50 per richiesta, anche chiedendone di più. */
@@ -41,6 +46,27 @@ const AMENITY: Record<string, string> = {
   ice_cream: 'Gelateria',
   food_court: 'Area ristoro',
   biergarten: 'Birreria',
+}
+
+/** Alloggi di OpenStreetMap (chiave «tourism»). */
+const LODGING: Record<string, string> = {
+  hotel: 'Hotel',
+  motel: 'Motel',
+  hostel: 'Ostello',
+  guest_house: 'B&B · affittacamere',
+  apartment: 'Appartamento',
+  chalet: 'Chalet',
+  alpine_hut: 'Rifugio',
+  wilderness_hut: 'Bivacco',
+  camp_site: 'Campeggio',
+  caravan_site: 'Area camper',
+}
+
+/** Cosa si cerca: locali dove mangiare o alloggi dove dormire. */
+export type PlaceKind = 'food' | 'sleep'
+const KINDS: Record<PlaceKind, { key: string; types: Record<string, string>; radii: readonly [number, number] }> = {
+  food: { key: 'amenity', types: AMENITY, radii: RADII },
+  sleep: { key: 'tourism', types: LODGING, radii: SLEEP_RADII },
 }
 
 export interface NearbyPlace extends Meal {
@@ -88,9 +114,10 @@ interface PhotonResult {
 }
 
 /** Una richiesta a Photon attorno a (qLat, qLon); le distanze si misurano dalla foto (lat, lon). */
-async function photonAt(lat: number, lon: number, qLat: number, qLon: number, radius: number, qRadius: number): Promise<NearbyPlace[]> {
-  const tags = Object.keys(AMENITY)
-    .map((t) => `&osm_tag=amenity:${t}`)
+async function photonAt(kind: PlaceKind, lat: number, lon: number, qLat: number, qLon: number, radius: number, qRadius: number): Promise<NearbyPlace[]> {
+  const { key, types } = KINDS[kind]
+  const tags = Object.keys(types)
+    .map((t) => `&osm_tag=${key}:${t}`)
     .join('')
   // ⚠️ lang=en: con "default" i nomi arrivano nella lingua del posto (a Bangkok in
   // caratteri thai) e molti locali senza nome; l'italiano Photon non lo supporta.
@@ -103,7 +130,7 @@ async function photonAt(lat: number, lon: number, qLat: number, qLon: number, ra
     const distance = Math.round(distanceM(lat, lon, pLat, pLon))
     if (distance > radius) continue
     const pr = f.properties
-    out.push({ name, kind: AMENITY[pr.osm_value ?? ''], lat: pLat, lon: pLon, distance, address: address(pr.street, pr.housenumber, pr.city ?? pr.locality) })
+    out.push({ name, kind: types[pr.osm_value ?? ''], lat: pLat, lon: pLon, distance, address: address(pr.street, pr.housenumber, pr.city ?? pr.locality) })
   }
   return out
 }
@@ -114,8 +141,8 @@ async function photonAt(lat: number, lon: number, qLat: number, qLon: number, ra
  * ~170 m invece di 400): se ne fanno cinque, dalla foto e da quattro punti
  * attorno, e si uniscono (circa un secondo in tutto).
  */
-async function photon(lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
-  if (radius <= RADII[0]) return finish(await photonAt(lat, lon, lat, lon, radius, radius))
+async function photon(kind: PlaceKind, lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
+  if (radius <= KINDS[kind].radii[0]) return finish(await photonAt(kind, lat, lon, lat, lon, radius, radius))
   const d = radius * 0.55
   const dLat = d / 111_320
   const dLon = d / (111_320 * Math.cos((lat * Math.PI) / 180))
@@ -132,7 +159,7 @@ async function photon(lat: number, lon: number, radius: number): Promise<NearbyP
   let ok = 0
   for (const [qLat, qLon] of centers) {
     try {
-      all.push(...(await photonAt(lat, lon, qLat, qLon, radius, radius * 0.6)))
+      all.push(...(await photonAt(kind, lat, lon, qLat, qLon, radius, radius * 0.6)))
       ok++
     } catch {
       // si prova il punto successivo
@@ -151,15 +178,17 @@ interface OsmElement {
 
 /** Tipo leggibile: la cucina, quando dice di più del tipo di locale. */
 function kindOf(tags: Record<string, string>): string | undefined {
+  if (tags.tourism) return LODGING[tags.tourism]
   const cuisine = tags.cuisine ?? ''
   if (/pizza/.test(cuisine)) return 'Pizzeria'
   if (/sushi/.test(cuisine)) return 'Sushi'
   return AMENITY[tags.amenity ?? '']
 }
 
-async function overpass(lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
-  const types = Object.keys(AMENITY).join('|')
-  const query = `[out:json][timeout:10];nwr(around:${radius},${lat},${lon})["amenity"~"^(${types})$"]["name"];out center ${MAX};`
+async function overpass(kind: PlaceKind, lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
+  const { key } = KINDS[kind]
+  const types = Object.keys(KINDS[kind].types).join('|')
+  const query = `[out:json][timeout:10];nwr(around:${radius},${lat},${lon})["${key}"~"^(${types})$"]["name"];out center ${MAX};`
   const json = await fetchJson<{ elements?: OsmElement[] }>(`${OVERPASS}?data=${encodeURIComponent(query)}`, OVERPASS_MS)
   const out: NearbyPlace[] = []
   for (const el of json.elements ?? []) {
@@ -173,11 +202,11 @@ async function overpass(lat: number, lon: number, radius: number): Promise<Nearb
   return finish(out)
 }
 
-async function around(lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
+async function around(kind: PlaceKind, lat: number, lon: number, radius: number): Promise<NearbyPlace[]> {
   try {
-    return await photon(lat, lon, radius)
+    return await photon(kind, lat, lon, radius)
   } catch {
-    return overpass(lat, lon, radius)
+    return overpass(kind, lat, lon, radius)
   }
 }
 
@@ -185,6 +214,6 @@ async function around(lat: number, lon: number, radius: number): Promise<NearbyP
  * Locali entro `radius` metri, dal più vicino. Lancia un errore senza rete o
  * se nessun servizio risponde.
  */
-export async function nearbyPlaces(lat: number, lon: number, radius: number = RADII[0]): Promise<NearbyPlace[]> {
-  return around(lat, lon, radius)
+export async function nearbyPlaces(lat: number, lon: number, radius: number = RADII[0], kind: PlaceKind = 'food'): Promise<NearbyPlace[]> {
+  return around(kind, lat, lon, radius)
 }

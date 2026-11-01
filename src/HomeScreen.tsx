@@ -153,7 +153,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const [selected, setSelected] = useState<string>()
   const preview = allRows?.find((r) => r.trip.id === selected)
   // Tratti con i percorsi stimati, solo per il viaggio in anteprima.
-  const previewLegs = useLegs(preview?.trip.id, preview?.stops)
+  const previewLegs = useLegs(preview?.trip.id, preview?.stops, preview?.trip.nights)
 
   // Una miniatura per tappa, solo per il viaggio in anteprima.
   const covers = useLiveQuery(async () => {

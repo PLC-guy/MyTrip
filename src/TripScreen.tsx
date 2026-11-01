@@ -22,6 +22,8 @@ import { useLegs } from './useLegs'
 import { routesPending } from './routing'
 import { describeWeather, weatherPending } from './weather'
 import ShareSheet from './ShareSheet'
+import LodgingSheet from './LodgingSheet'
+import { addDays, isNight, nightDay, nightId, nightOfStay } from './nights'
 import NotifySheet from './NotifySheet'
 import { leaveShare, pullShare, useSyncStatus } from './sync'
 import type { Route } from './App'
@@ -40,6 +42,8 @@ type Panel =
   | { kind: 'delete' }
   | { kind: 'diary'; day: string; value: string }
   | { kind: 'transport'; stopId: string }
+  /** Pernottamento della sera di `day` (nights.ts). */
+  | { kind: 'lodging'; day: string }
 
 /** Quanto resta su ogni tappa l'itinerario animato. */
 const PLAY_MS = 2600
@@ -164,28 +168,47 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
    */
   const dayNum = useMemo(() => new Map(days.map((d) => [d.day, daySpan(days[0].day, d.day)])), [days])
   const showDay = (s: Stop) => dayFilter === null || dayOf(s.first) === dayFilter
+  const nights = data?.trip?.nights
   const pins = useMemo<MapPin[]>(
-    () =>
-      (data?.stops ?? []).filter(showDay).map((s) => {
+    () => {
+      const out: MapPin[] = (data?.stops ?? []).filter(showDay).map((s) => {
         const cover = byStop.get(s.id)?.[0]
         const label = days.length > 1 ? String(dayNum.get(dayOf(s.first))) : undefined
         return { id: s.id, lat: s.lat, lon: s.lon, color, img: cover ? thumbUrl(cover) : undefined, count: byStop.get(s.id)?.length, star: s.star, label, meal: !!s.meal }
-      }),
+      })
+      // Un pallino col letto per alloggio (più notti nello stesso posto: uno solo).
+      // Con un giorno isolato: l'alloggio della sera prima e quello della sera.
+      const seen = new Set<string>()
+      for (const [day, l] of Object.entries(nights ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+        if (dayFilter !== null && day !== dayFilter && day !== addDays(dayFilter, -1)) continue
+        if (seen.has(l.id)) continue
+        seen.add(l.id)
+        out.push({ id: nightId(day), lat: l.lat, lon: l.lon, color, label: '🛏' })
+      }
+      return out
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data?.stops, byStop, color, days, dayNum, dayFilter],
+    [data?.stops, byStop, color, days, dayNum, dayFilter, nights],
   )
 
   // Un tratto per ogni coppia di tappe, col percorso stimato se c'è. Durante
   // l'itinerario animato si disegnano solo i tratti già percorsi.
-  const legs = useLegs(id, data?.stops)
-  // Con un giorno isolato, solo i tratti fra due tappe di quel giorno.
+  const legs = useLegs(id, data?.stops, nights)
+  // ⚠️ Con gli alloggi i tratti non sono più uno per tappa: si cercano per arrivo.
+  const legTo = useMemo(() => new Map(legs.map((l) => [l.toStopId, l])), [legs])
+  // Con un giorno isolato, solo i tratti di quel giorno: dall'alloggio della sera
+  // prima, fra le sue tappe, fino all'alloggio della sera.
   const inDay = useMemo(() => {
     if (dayFilter === null) return () => true
     const ids = new Set((data?.stops ?? []).filter((s) => dayOf(s.first) === dayFilter).map((s) => s.id))
-    const prev = new Map((data?.stops ?? []).map((s, i, all) => [s.id, all[i - 1]?.id]))
-    return (l: MapLine) => ids.has(l.id) && ids.has(prev.get(l.id) ?? '')
-  }, [data?.stops, dayFilter])
-  const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, play === null ? legs.length + 1 : play + 1).filter(inDay), [legs, color, play, inDay])
+    ids.add(nightId(dayFilter))
+    ids.add(nightId(addDays(dayFilter, -1)))
+    const keep = new Set(legs.filter((l) => ids.has(l.toStopId) && ids.has(l.fromStopId)).map((l) => l.toStopId))
+    return (l: MapLine) => keep.has(l.id)
+  }, [data?.stops, dayFilter, legs])
+  // Itinerario animato: i tratti fino alla tappa raggiunta, alloggi compresi.
+  const upTo = play === null ? legs.length + 1 : play === 0 ? 1 : legs.findIndex((l) => l.toStopId === data?.stops[play]?.id) + 2
+  const lines = useMemo<MapLine[]>(() => legsToLines(legs, color, upTo).filter(inDay), [legs, color, upTo, inDay])
   const allLines = useMemo<MapLine[]>(() => legsToLines(legs, color).filter(inDay), [legs, color, inDay])
   const warnings = legs.filter((l) => l.warning && l.straightKm >= SAME_PLACE_KM)
 
@@ -274,6 +297,11 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }
 
   const openAt = (sid: string) => {
+    // Pallino di un alloggio: si apre il suo pernottamento.
+    if (isNight(sid)) {
+      if (!readOnly) setPanel({ kind: 'lodging', day: nightDay(sid) })
+      return
+    }
     setPlay(null)
     setFocus(sid)
     setOpenStop(sid)
@@ -457,7 +485,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           {d.stops.map((s) => {
             const photos = byStop.get(s.id) ?? []
             const idx = data.stops.indexOf(s)
-            const leg = idx > 0 ? legs[idx - 1] : undefined
+            const leg = legTo.get(s.id)
             const w = s.weather && describeWeather(s.weather.code)
             return (
               <Fragment key={s.id}>
@@ -507,6 +535,41 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
               </Fragment>
             )
           })}
+          {(() => {
+            // Pernottamento della sera (richiesta dell'utente, 1/11/2026).
+            const lodging = trip.nights?.[d.day]
+            const toNight = legTo.get(nightId(d.day))
+            if (!lodging) {
+              return readOnly ? null : (
+                <button className="night-add" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>
+                  🛏 Dove hai dormito?
+                </button>
+              )
+            }
+            const stay = nightOfStay(trip.nights, d.day)
+            const body = (
+              <>
+                <span className="label">
+                  🛏 Notte{lodging.kind ? ` · ${lodging.kind}` : ''}
+                  {stay.of > 1 ? ` · notte ${stay.n} di ${stay.of}` : ''}
+                </span>
+                <b>{lodging.name}</b>
+                {lodging.approx && <span className="note">Posizione indicativa: quella dell'ultima tappa del giorno.</span>}
+              </>
+            )
+            return (
+              <>
+                {toNight && toNight.straightKm >= SAME_PLACE_KM && (
+                  <div className={`leg${toNight.inferred ? '' : ' set'} static`}>
+                    <span className="leg-label">
+                      {toNight.icon} {toNight.inferred ? `${toNight.label.toLowerCase()}?` : toNight.label} · {fmtKm(toNight.km)}
+                    </span>
+                  </div>
+                )}
+                {readOnly ? <div className="night-card">{body}</div> : <button className="night-card" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>{body}</button>}
+              </>
+            )
+          })()}
         </section>
       ))}
       </div>
@@ -529,10 +592,11 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {panel.kind === 'transport' && (() => {
         // Dati sempre freschi dalla lista: il foglio resta aperto mentre arrivano i percorsi.
         const to = data.stops.find((s) => s.id === panel.stopId)
-        const at = to ? data.stops.indexOf(to) : -1
-        const leg = legs[at - 1]
+        const leg = to ? legTo.get(to.id) : undefined
         if (!to || !leg) return null
-        const from = data.stops[at - 1]
+        const fromName = isNight(leg.fromStopId)
+          ? (trip.nights?.[nightDay(leg.fromStopId)]?.name ?? 'alloggio')
+          : stopTitle(data.stops.find((s) => s.id === leg.fromStopId) ?? to)
         const setStop = (patch: Partial<Stop>) => {
           void db.stops.update(to.id, patch).then(() => routesPending(id))
         }
@@ -540,7 +604,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <Sheet onClose={() => setPanel({ kind: 'none' })}>
             <h2>Come ci sei arrivato?</h2>
             <p className="small">
-              Da «{stopTitle(from)}» a «{stopTitle(to)}» · {fmtKm(leg.straightKm)} in linea d'aria
+              Da «{fromName}» a «{stopTitle(to)}» · {fmtKm(leg.straightKm)} in linea d'aria
             </p>
             <div className="note-box" style={{ marginTop: 10 }}>
               {leg.inferred ? 'Mezzo dedotto dalla distanza: ' : 'Mezzo indicato: '}
@@ -596,6 +660,12 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             </p>
           </Sheet>
         )
+      })()}
+
+      {panel.kind === 'lodging' && (() => {
+        const today = days.find((d) => d.day === panel.day)
+        const last = today?.stops.at(-1)
+        return last ? <LodgingSheet trip={trip} day={panel.day} last={last} onClose={() => setPanel({ kind: 'none' })} /> : null
       })()}
 
       {panel.kind === 'diary' && (

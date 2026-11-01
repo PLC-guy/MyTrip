@@ -31,6 +31,25 @@ export interface Trip {
   diary?: Record<string, string>
   /** Tipo di viaggio scelto da chi lo crea; se manca vale «piacere». ⚠️ Valori da non rinominare. */
   kind?: TripKind
+  /**
+   * Pernottamenti: la sera del giorno «2026-09-26» → dove si è dormito (nights.ts).
+   * Facoltativo, anche negli export e nella condivisione (viaggia con il viaggio).
+   */
+  nights?: Record<string, Lodging>
+}
+
+/** Un alloggio, scelto fra quelli vicini di OpenStreetMap o scritto a mano (places.ts). */
+export interface Lodging {
+  /** Uguale per tutte le notti nello stesso posto. */
+  id: string
+  name: string
+  /** «Hotel», «B&B», «Campeggio»… */
+  kind?: string
+  lat: number
+  lon: number
+  address?: string
+  /** Scritto a mano: la posizione è quella dell'ultima tappa del giorno, non dell'alloggio. */
+  approx?: boolean
 }
 
 export type TripKind = 'piacere' | 'lavoro'
