@@ -10,6 +10,7 @@ import MapsChooser from './MapsChooser'
 import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
 import { routesPending } from './routing'
+import { useProfile } from './profile'
 
 interface Props {
   stop: Stop
@@ -32,6 +33,8 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
   const [renaming, setRenaming] = useState<string>()
   const [ask, setAsk] = useState<Ask>()
   const [msg, setMsg] = useState<string>()
+  // Di chi è la foto: solo per quelle arrivate da un'altra persona (merge.ts).
+  const me = useProfile().name
   /**
    * «Modifica tappa»: forbici, cestino e «Unisci» restano nascosti finché non si
    * chiedono (richiesta dell'utente, 30/10/2026): sono azioni rare e pesanti,
@@ -117,6 +120,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
               <span>
                 {fmtTime(p.taken)}
                 {p.alt != null ? ` · ${p.alt} m` : ''}
+                {p.by && p.by !== me ? ` · di ${p.by}` : ''}
               </span>
               <span>
                 {/* La foto del piatto: da qui si sceglie il locale, cercando attorno a

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { colorName, db } from './db'
-import { applyImport, exportTrips, readImport, type ParsedImport } from './backup'
+import { applyImport, estimateExport, exportTrips, readImport, type ParsedImport } from './backup'
 import { shareExport } from './exportFlow'
 import Sheet from './Sheet'
 import { backupDue, describeBackupAge, photosToKeep, runBackup, useBackupState } from './backupReminder'
@@ -362,17 +362,17 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       <p className="small">Il backup contiene anche i link dei viaggi che condividi. Tienilo per te.</p>
 
       <h2 className="section-title">Esporta alcuni viaggi</h2>
-      <p className="small">Per passare qualche viaggio a qualcuno. Più viaggi finiscono in un unico file, con foto alleggerite per mandarle facilmente.</p>
+      <p className="small">Per passare qualche viaggio a qualcuno. Più viaggi finiscono in un unico file.</p>
       <button className="btn ghost" disabled={working || !trips} onClick={() => setChoosing(true)}>
         Scegli i viaggi da esportare
       </button>
       {choosing && (
         <ChooseTrips
           onClose={() => setChoosing(false)}
-          onExport={(ids) => {
+          onExport={(ids, lite) => {
             setChoosing(false)
             const label = ids.length === 1 ? '1 viaggio' : `${ids.length} viaggi`
-            void run(async () => ((await shareExport(label, (p) => exportTrips(ids, p))) ? `Esportat${ids.length === 1 ? 'o 1 viaggio' : `i ${ids.length} viaggi`}.` : undefined))
+            void run(async () => ((await shareExport(label, (p) => exportTrips(ids, p, lite))) ? `Esportat${ids.length === 1 ? 'o 1 viaggio' : `i ${ids.length} viaggi`}.` : undefined))
           }}
         />
       )}
@@ -382,6 +382,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
 
       <h2 className="section-title">Ripristino</h2>
       <p className="small">Puoi importare un singolo viaggio o un backup completo, anche fatto su un altro telefono. Se un viaggio c'è già, si aggiorna.</p>
+      <p className="small">Per unire il viaggio di chi era con te a uno dei tuoi, apri il tuo viaggio e scegli ⋯ › «Unisci un viaggio ricevuto».</p>
       <label className="btn ghost" aria-disabled={working}>
         Importa un viaggio o un backup
         <input
@@ -425,8 +426,12 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
 }
 
 /** Elenco dei viaggi con una casella ciascuno; dal più recente, come in Home. */
-function ChooseTrips({ onClose, onExport }: { onClose: () => void; onExport: (ids: string[]) => void }) {
+function ChooseTrips({ onClose, onExport }: { onClose: () => void; onExport: (ids: string[], lite: boolean) => void }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  // Leggero per WhatsApp (predefinito) o qualità piena per unire i viaggi (scelta dell'utente, 1/11/2026).
+  const [lite, setLite] = useState(true)
+  const key = [...picked].sort().join()
+  const size = useLiveQuery(() => (picked.size ? estimateExport([...picked]) : undefined), [key])
   const rows = useLiveQuery(async () => {
     const trips = await db.trips.toArray()
     const stops = await db.stops.orderBy('start').toArray()
@@ -465,8 +470,25 @@ function ChooseTrips({ onClose, onExport }: { onClose: () => void; onExport: (id
           </label>
         ))}
       </div>
+      <h3 className="section-title">Foto</h3>
+      <div className="list pick-list">
+        <label className="pick">
+          <input type="radio" name="export-quality" checked={lite} onChange={() => setLite(true)} />
+          <span className="pick-text">
+            <b>Leggere</b>
+            <span className="k">Per mandarle su WhatsApp{size ? `, circa ${fmtBytes(size.lite)}` : ''}</span>
+          </span>
+        </label>
+        <label className="pick">
+          <input type="radio" name="export-quality" checked={!lite} onChange={() => setLite(false)} />
+          <span className="pick-text">
+            <b>Qualità piena</b>
+            <span className="k">Per chi unisce il viaggio al suo{size ? `, circa ${fmtBytes(size.full)}` : ''}</span>
+          </span>
+        </label>
+      </div>
       <div className="stack">
-        <button className="btn" disabled={picked.size === 0} onClick={() => onExport([...picked])}>
+        <button className="btn" disabled={picked.size === 0} onClick={() => onExport([...picked], lite)}>
           {picked.size === 0 ? 'Scegli almeno un viaggio' : `Esporta ${plural(picked.size, 'viaggio', 'viaggi')}`}
         </button>
       </div>

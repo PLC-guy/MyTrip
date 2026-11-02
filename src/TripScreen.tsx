@@ -22,6 +22,7 @@ import { useLegs } from './useLegs'
 import { routesPending } from './routing'
 import { describeWeather, weatherPending } from './weather'
 import ShareSheet from './ShareSheet'
+import MergeSheet from './MergeSheet'
 import LodgingSheet from './LodgingSheet'
 import { addDays, isNight, nightDay, nightId, nightOfStay } from './nights'
 import NotifySheet from './NotifySheet'
@@ -37,6 +38,7 @@ type Panel =
   | { kind: 'cover' }
   | { kind: 'color' }
   | { kind: 'share' }
+  | { kind: 'merge' }
   | { kind: 'notify' }
   | { kind: 'rename'; value: string; type: TripKind }
   | { kind: 'delete' }
@@ -806,6 +808,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             <button className="btn ghost" onClick={() => swapTo({ kind: 'color' })}>
               <span className="dot" style={{ background: trip.color, width: 12, height: 12, margin: 0 }} /> Colore della traccia
             </button>
+            <button className="btn ghost" onClick={() => swapTo({ kind: 'merge' })}>Unisci un viaggio ricevuto</button>
             <button className="btn ghost" onClick={() => void deliver(() => exportKml(id))} disabled={data.stops.length === 0}>Esporta per Google Maps</button>
             <button className="btn danger" onClick={() => setPanel({ kind: 'delete' })}>Elimina il viaggio</button>
           </div>
@@ -821,6 +824,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {panel.kind === 'share' && <ShareSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
 
       {panel.kind === 'notify' && share && <NotifySheet share={share} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
+
+      {panel.kind === 'merge' && <MergeSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} onDone={() => setPanel({ kind: 'none' })} leaving={leaving} swap={swapped} />}
 
       {panel.kind === 'cover' && <CoverSheet trip={trip} onClose={() => swapTo({ kind: 'menu' })} leaving={leaving} swap={swapped} />}
 

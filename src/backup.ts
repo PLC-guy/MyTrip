@@ -4,6 +4,7 @@ import { currentPushSub } from './sync'
 import { cleanGrouping, getGrouping, setGrouping, type Grouping } from './grouping'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
+import { getProfile } from './profile'
 
 /**
  * File di export: un viaggio singolo o il backup di tutti.
@@ -15,11 +16,11 @@ import { shareThumb } from './shareThumb'
 const APP = 'mytrip'
 const FORMAT = 1
 
-type PhotoFile = Omit<Photo, 'thumb'> & { thumb: string }
+export type PhotoFile = Omit<Photo, 'thumb'> & { thumb: string }
 /** `coverImage` facoltativo: i file esportati prima della 0.2.0 non lo hanno. */
 type TripFile = Omit<Trip, 'coverImage'> & { coverImage?: string }
 
-interface ExportFile {
+export interface ExportFile {
   app: typeof APP
   format: number
   kind: 'trip' | 'backup'
@@ -39,6 +40,12 @@ interface ExportFile {
   shares?: Share[]
   /** Solo nel backup completo (dalla 0.19.0): come si raggruppano le foto in tappe (grouping.ts). */
   grouping?: Grouping
+  /**
+   * Solo negli export da mandare ad altri (dalla 0.22.0): il nome del viaggiatore
+   * di chi esporta. Le sue foto escono con `by` = questo nome, così chi unisce il
+   * viaggio al suo sa di chi sono (merge.ts).
+   */
+  by?: string
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {
@@ -56,7 +63,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
  * IndexedDB conserva senza sorprese.
  */
 /** Byte da scrivere nell'archivio (mai Blob: vedi db.ts). */
-function dataUrlToStored(url: string): Blob {
+export function dataUrlToStored(url: string): Blob {
   const comma = url.indexOf(',')
   const bin = atob(url.slice(comma + 1))
   const bytes = new Uint8Array(bin.length)
@@ -75,6 +82,8 @@ const PARALLEL = 8
  * Il contenuto è identico a prima: formato 1, si reimporta allo stesso modo.
  */
 async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onProgress?: Progress, lite = false): Promise<File> {
+  // Da mandare ad altri: le foto senza autore sono di chi esporta. Il backup completo no.
+  const by = kind === 'trip' ? getProfile().name : undefined
   const ids = trips.map((t) => t.id)
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photos = await db.photos.where('tripId').anyOf(ids).toArray()
@@ -87,13 +96,13 @@ async function build(kind: ExportFile['kind'], trips: Trip[], name: string, onPr
   onProgress?.(0, photos.length)
   for (let i = 0; i < photos.length; i += PARALLEL) {
     const chunk = await Promise.all(
-      photos.slice(i, i + PARALLEL).map(async (p) => JSON.stringify({ ...p, thumb: await blobToDataUrl(lite ? await shareThumb(p.thumb) : p.thumb) } satisfies PhotoFile)),
+      photos.slice(i, i + PARALLEL).map(async (p) => JSON.stringify({ ...p, ...(by && !p.by ? { by } : {}), thumb: await blobToDataUrl(lite ? await shareThumb(p.thumb) : p.thumb) } satisfies PhotoFile)),
     )
     parts.push(...chunk)
     onProgress?.(Math.min(i + PARALLEL, photos.length), photos.length)
   }
 
-  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}), ...(shares.length ? { shares } : {}), ...(kind === 'backup' ? { grouping: getGrouping() } : {}) }
+  const head: Omit<ExportFile, 'photos'> = { app: APP, format: FORMAT, kind, exportedAt: new Date().toISOString(), trips: tripFiles, stops, routes, ...(lite ? { lite } : {}), ...(shares.length ? { shares } : {}), ...(kind === 'backup' ? { grouping: getGrouping() } : {}), ...(by ? { by } : {}) }
   const json = JSON.stringify(head)
   const pieces: BlobPart[] = [json.slice(0, -1), ',"photos":[']
   parts.forEach((p, i) => pieces.push(i ? ',' : '', p))
@@ -130,13 +139,15 @@ function safeName(name: string): string {
  * Uno o più viaggi scelti (Impostazioni › Backup e ripristino). Un solo viaggio
  * prende il suo nome; più viaggi stanno in un unico file, che si reimporta allo
  * stesso modo. Non conta come backup completo: per quello c'è `exportBackup`.
+ * `lite` (predefinito, per WhatsApp): miniature ridotte (shareThumb.ts); senza,
+ * «Qualità piena»: le miniature come sono, per unire il viaggio a quello di
+ * un'altra persona senza perdere nitidezza (scelta dell'utente, 1/11/2026).
  */
-export async function exportTrips(tripIds: string[], onProgress?: Progress): Promise<File> {
+export async function exportTrips(tripIds: string[], onProgress?: Progress, lite = true): Promise<File> {
   const trips = (await db.trips.bulkGet(tripIds)).filter((t): t is Trip => !!t)
   if (trips.length === 0) throw new Error('Nessun viaggio scelto')
   const base = trips.length === 1 ? safeName(trips[0].name) : `MyTrip-${trips.length}-viaggi-${today()}`
-  // Da mandare ad altri: miniature ridotte (shareThumb.ts). Il backup completo no.
-  return pack(await build('trip', trips, 'export.json', onProgress, true), base)
+  return pack(await build('trip', trips, 'export.json', onProgress, lite), base)
 }
 
 /**
@@ -158,6 +169,23 @@ export async function exportBackup(onProgress?: Progress): Promise<File> {
 export interface ImportSummary {
   trips: string[]
   photos: number
+}
+
+/**
+ * Peso stimato di «Esporta alcuni viaggi», per scegliere fra leggero e pieno.
+ * Leggero: ~9 KB a foto (misurato sul Vietnam, 267 foto in 2,48 MB). Pieno: le
+ * miniature come sono (il JPEG non si comprime e gzip riassorbe il base64).
+ */
+export const LITE_PHOTO_BYTES = 9 * 1024
+export async function estimateExport(tripIds: string[]): Promise<{ lite: number; full: number }> {
+  const photos = await db.photos.where('tripId').anyOf(tripIds).toArray()
+  const trips = (await db.trips.bulkGet(tripIds)).flatMap((t) => (t ? [t] : []))
+  const covers = trips.reduce((s, t) => s + (t.coverImage?.size ?? 0), 0)
+  const head = 2048 + photos.length * 400
+  return {
+    lite: head + covers + photos.reduce((s, p) => s + Math.min(p.thumb.size, LITE_PHOTO_BYTES), 0),
+    full: head + covers + photos.reduce((s, p) => s + p.thumb.size, 0),
+  }
 }
 
 /** Un file letto, pronto da importare (`readImport` → `applyImport`). */

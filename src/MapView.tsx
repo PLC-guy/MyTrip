@@ -5,6 +5,47 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { cssColor } from './theme'
 import { mapStyle } from './mapStyle'
 
+/**
+ * Crediti della mappa scritti dall'app, sempre uguali (revisione S5, 2/11/2026).
+ * ⚠️ Non usare il controllo dei crediti di MapLibre: mette nella pagina come HTML
+ * il testo che arriva da OpenFreeMap, e il filtro di MapLibre 5 ha un difetto noto
+ * (GHSA-jrc7-96c5-q579). Se OpenFreeMap fosse compromesso, quel testo potrebbe far
+ * girare codice dentro l'app e leggere tutti i viaggi. Qui solo testo e link fissi.
+ * Stesse classi di MapLibre: aspetto e «i» per aprirli restano quelli di prima.
+ */
+const CREDITS: [string, string][] = [
+  ['OpenFreeMap', 'https://openfreemap.org'],
+  ['OpenMapTiles', 'https://www.openmaptiles.org/'],
+  ['Dati di OpenStreetMap', 'https://www.openstreetmap.org/copyright'],
+]
+
+class CreditsControl implements maplibregl.IControl {
+  private box?: HTMLElement
+  onAdd() {
+    const box = document.createElement('details')
+    box.className = 'maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact'
+    const button = document.createElement('summary')
+    button.className = 'maplibregl-ctrl-attrib-button'
+    button.setAttribute('aria-label', 'Crediti della mappa')
+    box.addEventListener('toggle', () => box.classList.toggle('maplibregl-compact-show', (box as HTMLDetailsElement).open))
+    const inner = document.createElement('div')
+    inner.className = 'maplibregl-ctrl-attrib-inner'
+    CREDITS.forEach(([name, href], i) => {
+      if (i) inner.append(' ')
+      const a = document.createElement('a')
+      a.href = href
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.textContent = '© ' + name
+      inner.append(a)
+    })
+    box.append(button, inner)
+    this.box = box
+    return box
+  }
+  onRemove() { this.box?.remove() }
+}
+
 export interface MapPin {
   id: string
   lat: number
@@ -191,17 +232,15 @@ export default function MapView({ pins, lines, fitKey, focusId, onPin, tall, wor
       style: mapStyle(),
       center: [10, 30],
       zoom: 1.2,
-      attributionControl: { compact: true },
+      attributionControl: false,
       // Niente rotazione né inclinazione: su una mappa di ricordi confondono.
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
     })
     m.touchZoomRotate.disableRotation()
-    // I crediti della mappa partono chiusi (resta la «i» per aprirli).
-    // ⚠️ 'idle' e non 'load': i crediti arrivano con i dati delle tile, dopo il
-    // caricamento dello stile, e in quel momento il riquadro si riapre da solo.
-    m.once('idle', () => el.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'))
+    // Crediti fissi, chiusi all'inizio (resta la «i» per aprirli).
+    m.addControl(new CreditsControl(), 'bottom-right')
     m.on('style.load', () => {
       localize(m)
       m.addSource('route', { type: 'geojson', data: EMPTY })

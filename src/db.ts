@@ -146,6 +146,12 @@ export interface Photo {
   height: number
   /** Nome del file originale, per ritrovarlo. */
   name: string
+  /**
+   * Chi l'ha scattata, se è arrivata da un'altra persona con «Unisci un viaggio
+   * ricevuto» (merge.ts): il suo nome del viaggiatore. Le proprie foto non ce
+   * l'hanno; negli export da mandare ad altri si scrive il proprio nome.
+   */
+  by?: string
 }
 
 /**
