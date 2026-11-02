@@ -2,11 +2,12 @@ import { useMemo } from 'react'
 import { useSessionState } from './sessionState'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Lodging, type Trip } from './db'
-import { fmtDay, plural } from './format'
+import { fmtDay, fmtDayShort, plural } from './format'
 import { IconBack } from './icons'
 import MapView, { type MapPin } from './MapView'
 import { addDays, nightId } from './nights'
 import { groupVenues, ownNights, venueRating } from './venues'
+import { useVenuePick, VenueVisits } from './VenueVisits'
 import type { Route } from './App'
 
 /** Un alloggio: la notte più recente lo rappresenta. */
@@ -14,9 +15,11 @@ interface Row {
   key: string
   lodging: Lodging
   trip: Trip
-  /** Prima notte del soggiorno più recente: da qui si apre il pernottamento. */
+  /** Prima notte del soggiorno più recente. */
   day: string
   nights: number
+  /** Soggiorni (notti di fila nello stesso viaggio), dal più recente. */
+  stays: { trip: Trip; day: string; nights: number }[]
   rating?: number
   country?: string
   countryCode?: string
@@ -44,8 +47,16 @@ export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
       // Il soggiorno più recente comincia alla prima notte di fila nello stesso alloggio.
       let day = last.day
       while (g.some((n) => n.trip.id === last.trip.id && n.lodging.id === last.lodging.id && n.day === addDays(day, -1))) day = addDays(day, -1)
+      // Soggiorni: notti di fila nello stesso viaggio e nello stesso alloggio.
+      const stays: Row['stays'] = []
+      for (const n of [...g].sort((a, b) => a.day.localeCompare(b.day))) {
+        const prev = stays.at(-1)
+        if (prev && prev.trip.id === n.trip.id && addDays(prev.day, prev.nights) === n.day) prev.nights++
+        else stays.push({ trip: n.trip, day: n.day, nights: 1 })
+      }
+      stays.reverse()
       const place = stops.filter((s) => s.tripId === last.trip.id && s.first.slice(0, 10) <= last.day).sort((a, b) => b.start - a.start)[0]
-      return { key: `${i}|${last.lodging.id}`, lodging: last.lodging, trip: last.trip, day, nights: g.length, rating: venueRating(g.map((n) => n.lodging.rating)), country: place?.country, countryCode: place?.countryCode }
+      return { key: `${i}|${last.lodging.id}`, lodging: last.lodging, trip: last.trip, day, nights: g.length, stays, rating: venueRating(g.map((n) => n.lodging.rating)), country: place?.country, countryCode: place?.countryCode }
     })
   })
 
@@ -55,9 +66,12 @@ export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
     return [...map].sort((a, b) => a[1].localeCompare(b[1], 'it'))
   }, [rows])
 
-  const shown = useMemo(() => (rows ?? []).filter((r) => (r.rating ?? 0) >= minRating && (!country || r.countryCode === country)), [rows, minRating, country])
+  // Un paese scelto che non è più fra quelli dell'elenco (o col menu nascosto,
+  // un paese solo) non filtra: altrimenti nasconderebbe tutto senza che si veda.
+  const place = countries.length > 1 && countries.some(([c]) => c === country) ? country : ''
+  const shown = useMemo(() => (rows ?? []).filter((r) => (r.rating ?? 0) >= minRating && (!place || r.countryCode === place)), [rows, minRating, place])
   const pins = useMemo<MapPin[]>(() => shown.map((r) => ({ id: r.key, lat: r.lodging.lat, lon: r.lodging.lon, color: r.trip.color })), [shown])
-  const open = (r: Row) => go({ name: 'trip', id: r.trip.id, stop: nightId(r.day) })
+  const [picked, pick] = useVenuePick()
 
   return (
     <div className="page">
@@ -85,7 +99,7 @@ export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
             ))}
           </div>
           {countries.length > 1 && (
-            <select className="field meal-country" value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Paese">
+            <select className="field meal-country" value={place} onChange={(e) => setCountry(e.target.value)} aria-label="Paese">
               <option value="">Tutti i paesi</option>
               {countries.map(([code, name]) => (
                 <option key={code} value={code}>
@@ -95,23 +109,19 @@ export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
             </select>
           )}
 
+          {/* Agganciata in alto: l'alloggio scelto nell'elenco si vede centrato anche scorrendo. */}
           {pins.length > 0 && (
-            <MapView
-              pins={pins}
-              lines={[]}
-              fitKey={`${minRating}|${country}|${pins.length}`}
-              onPin={(id) => {
-                const r = shown.find((x) => x.key === id)
-                if (r) open(r)
-              }}
-            />
+            <div className="venue-map">
+              <MapView pins={pins} lines={[]} fitKey={`${minRating}|${place}|${pins.length}`} focusId={picked} onPin={(id) => pick(id, true)} />
+            </div>
           )}
 
           <p className="meta" style={{ margin: '10px 2px' }}>
             {shown.length ? plural(shown.length, 'alloggio', 'alloggi') : 'Nessun alloggio con questi filtri'}
           </p>
           {shown.map((r) => (
-            <button key={r.key} className="stop compact" onClick={() => open(r)}>
+            <div key={r.key} id={`venue-${r.key}`} className={`venue${picked === r.key ? ' on' : ''}`}>
+            <button className="stop compact" aria-expanded={picked === r.key} onClick={() => pick(r.key)}>
               <span className="thumb lodging-thumb" aria-hidden="true">🛏</span>
               <span className="body">
                 <span className="place" style={{ display: 'block' }}>
@@ -128,6 +138,18 @@ export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
                 </span>
               </span>
             </button>
+            {picked === r.key && (
+              <VenueVisits
+                one="Apri la notte"
+                visits={r.stays.map((s) => ({
+                  key: `${s.trip.id}|${s.day}`,
+                  label: `${s.trip.name} · ${fmtDayShort(s.day + 'T12:00:00')} · ${plural(s.nights, 'notte', 'notti')}`,
+                  color: s.trip.color,
+                  open: () => go({ name: 'trip', id: s.trip.id, stop: nightId(s.day) }),
+                }))}
+              />
+            )}
+            </div>
           ))}
         </>
       )}

@@ -224,6 +224,23 @@ img { display: block; }
 .meta { color: var(--muted); font-size: 0.9rem; }
 .open-trip { width: calc(100% - 32px); margin: 0 16px 14px; }
 
+/* Locali e Alloggi (VenueVisits.tsx): mappa agganciata sotto l'intestazione
+   fissa, come in Home; il posto scelto ha il bordo e sotto le sue visite. */
+.venue-map {
+  position: sticky; top: calc(env(safe-area-inset-top) + var(--bar-h, 75px)); z-index: 10; background: var(--bg);
+  margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
+  padding: 4px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+}
+.venue-map .map { height: 30dvh; min-height: 200px; }
+.venue { border-radius: var(--radius); margin-bottom: 10px; }
+.venue > .stop.compact { margin-bottom: 0; }
+.venue.on { box-shadow: 0 0 0 2px var(--accent); background: var(--card); }
+.venue.on > .stop.compact { background: transparent; }
+.venue .open-trip { margin-top: 10px; }
+.venue-visits { display: grid; gap: 8px; padding: 10px 16px 14px; }
+.venue-visits .meta { margin: 0; }
+.venue-visits .btn { justify-content: flex-start; text-align: left; }
+
 /* --- Cronologia: linea tratteggiata blu con i pallini, come nel sito --- */
 /* Ogni giorno è un riquadro verde tè, come le schede dei viaggi in Home, con la
    sua linea della cronologia dentro; le tappe sono schede chiare sul verde. */
@@ -530,6 +547,9 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 .leg.flash .leg-label { animation: leg-flash 0.7s ease-in-out 2; }
 @keyframes leg-flash { 50% { transform: scale(1.08); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lat) 35%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .leg.flash .leg-label { animation: none; } }
+/* Scheda della notte raggiunta da «Dove ho dormito»: lampeggia come i tratti. */
+.night-card.flash { animation: leg-flash 0.7s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) { .night-card.flash { animation: none; } }
 
 /* Titoli delle sezioni della Home che si chiudono e si riaprono con un tocco. */
 /* Titoli delle sezioni che si chiudono (Home, numeri del viaggio). La freccia è

@@ -50,12 +50,27 @@ type Panel =
 /** Quanto resta su ogni tappa l'itinerario animato. */
 const PLAY_MS = 2600
 
+/**
+ * Centra un elemento nello spazio sotto l'intestazione fissa e, se richiesto,
+ * lo fa lampeggiare (`.flash`). Scorrimento immediato per l'arrivo da un'altra
+ * pagina, «morbido» per l'avviso dei tratti.
+ */
+function centerOn(el: HTMLElement, flash: boolean, behavior: ScrollBehavior = 'auto') {
+  const bar = document.querySelector('.page > .bar')?.getBoundingClientRect().bottom ?? 0
+  const r = el.getBoundingClientRect()
+  const top = window.scrollY + r.top + r.height / 2 - (bar + (window.innerHeight - bar) / 2)
+  window.scrollTo({ top: Math.max(0, top), behavior })
+  if (!flash) return
+  el.classList.remove('flash')
+  void el.offsetWidth
+  el.classList.add('flash')
+}
+
 export default function TripScreen({ id, initialStop, go }: { id: string; initialStop?: string; go: (r: Route) => void }) {
   const input = useRef<HTMLInputElement>(null)
   /** Quando si è aperto il selettore: per sapere quanto ha impiegato iOS a consegnare le foto. */
   const pickedAt = useRef<number | undefined>(undefined)
-  // Aperto da «Dove ho dormito» su una notte: si apre il suo pernottamento.
-  const [panel, setPanel] = useState<Panel>(initialStop && isNight(initialStop) ? { kind: 'lodging', day: nightDay(initialStop) } : { kind: 'none' })
+  const [panel, setPanel] = useState<Panel>({ kind: 'none' })
   /**
    * Scambio animato fra due fogli (richiesta dell'utente, 30/10/2026): dal menu ⋯
    * a condivisione, nome e tipo, copertina o colore il menu scende e l'altro sale; scelto, scende e il
@@ -72,7 +87,9 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       setPanel(next)
     }, SWAP_MS)
   }
-  const [openStop, setOpenStop] = useState<string | undefined>(initialStop)
+  // Con `initialStop` (da Locali, Alloggi, Speciali, Cerca) la tappa NON si apre
+  // subito: prima la pagina scorre fino a lei (effetto «Arrivo su una tappa»).
+  const [openStop, setOpenStop] = useState<string | undefined>()
   const [focus, setFocus] = useState<string | undefined>(initialStop)
   const [error, setError] = useState<string>()
   /** Indice della tappa mostrata dall'itinerario animato; null = fermo. */
@@ -241,6 +258,28 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
     }
   }
 
+  /**
+   * ARRIVO SU UNA TAPPA (richiesta dell'utente, 2/11/2026): da Locali, Alloggi,
+   * Speciali e Cerca si arriva con `initialStop`. Prima si centra la tappa (o la
+   * scheda della notte) nella pagina, POI si apre il foglio: un foglio aperto
+   * blocca la pagina e alla chiusura la riporta dov'era quando si è aperto
+   * (Sheet.tsx). Prima si apriva subito e chiudendolo si tornava in cima.
+   * Una notte non apre «Dove hai dormito?» (serve a cambiare l'alloggio): lampeggia.
+   * ⚠️ Sta PRIMA di `if (!data) return`: un hook dopo un'uscita anticipata
+   * manda React in errore («Rendered more hooks…», visto nelle prove).
+   */
+  const arrived = useRef(false)
+  useEffect(() => {
+    if (arrived.current || !initialStop || !data) return
+    arrived.current = true
+    requestAnimationFrame(() => {
+      const night = isNight(initialStop)
+      const el = document.getElementById(night ? `night-${nightDay(initialStop)}` : `stop-${initialStop}`)
+      if (el) centerOn(el, night)
+      if (!night) setOpenStop(initialStop)
+    })
+  }, [initialStop, data])
+
   if (!data) return null
   if (!data.trip) {
     return (
@@ -308,15 +347,9 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
    */
   const showLeg = (stopId: string) => {
     const el = document.getElementById(`leg-${stopId}`)
-    if (!el) return
-    const bar = document.querySelector('.page > .bar')?.getBoundingClientRect().bottom ?? 0
-    const r = el.getBoundingClientRect()
-    const top = window.scrollY + r.top + r.height / 2 - (bar + (window.innerHeight - bar) / 2)
-    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-    el.classList.remove('flash')
-    void el.offsetWidth
-    el.classList.add('flash')
+    if (el) centerOn(el, true, 'smooth')
   }
+
 
   const openAt = (sid: string) => {
     // Pallino di un alloggio: si apre il suo pernottamento.
@@ -535,7 +568,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                     </span>
                   </button>
                 )}
-                <button className="stop" onClick={() => openAt(s.id)}>
+                <button id={`stop-${s.id}`} className="stop" onClick={() => openAt(s.id)}>
                   <span className="stop-head">
                     <span className="label">
                       {fmtTime(s.first)} · {plural(photos.length, 'foto', 'foto')}
@@ -614,7 +647,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                     </span>
                   </div>
                 )}
-                {readOnly ? <div className="night-card">{body}</div> : <button className="night-card" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>{body}</button>}
+                {readOnly ? <div id={`night-${d.day}`} className="night-card">{body}</div> : <button id={`night-${d.day}`} className="night-card" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>{body}</button>}
               </>
             )
           })()}

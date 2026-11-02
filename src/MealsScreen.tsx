@@ -2,20 +2,21 @@ import { useMemo } from 'react'
 import { useSessionState } from './sessionState'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, followedTripIds, stopTitle, type Meal, type Photo, type Stop, type Trip } from './db'
-import { fmtDay, plural } from './format'
+import { fmtDay, fmtDayShort, fmtTime, plural } from './format'
 import { IconBack } from './icons'
 import MapView, { type MapPin } from './MapView'
 import { thumbUrl } from './thumbUrl'
 import type { Route } from './App'
 import { groupVenues, mealVenue, venueRating } from './venues'
+import { useVenuePick, VenueVisits } from './VenueVisits'
 
 /** Un locale: la visita più recente lo rappresenta (foto, tappa, viaggio). */
 interface Row {
   stop: Stop & { meal: Meal }
   trip: Trip
   photo?: Photo
-  /** Quante volte ci si è mangiato, in tutti i viaggi. */
-  visits: number
+  /** Tutte le volte che ci si è mangiato, dalla più recente, in tutti i viaggi. */
+  visits: { stop: Stop; trip: Trip }[]
   rating?: number
 }
 
@@ -44,7 +45,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
       const stop = visits[0]
       // La foto del piatto se c'è, altrimenti la prima della tappa.
       const photo = (stop.meal.photoId ? await db.photos.get(stop.meal.photoId) : undefined) ?? (await db.photos.where('stopId').equals(stop.id).sortBy('time'))[0]
-      out.push({ stop, trip: trips.get(stop.tripId)!, photo, visits: visits.length, rating: venueRating(visits.map((s) => s.meal.rating)) })
+      out.push({ stop, trip: trips.get(stop.tripId)!, photo, visits: visits.map((s) => ({ stop: s, trip: trips.get(s.tripId)! })), rating: venueRating(visits.map((s) => s.meal.rating)) })
     }
     return out
   })
@@ -56,9 +57,12 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
     return [...map].sort((a, b) => a[1].localeCompare(b[1], 'it'))
   }, [rows])
 
+  // Un paese scelto che non è più fra quelli dell'elenco (o col menu nascosto,
+  // un paese solo) non filtra: altrimenti nasconderebbe tutto senza che si veda.
+  const place = countries.length > 1 && countries.some(([c]) => c === country) ? country : ''
   const shown = useMemo(
-    () => (rows ?? []).filter((r) => (r.rating ?? 0) >= minRating && (!country || r.stop.countryCode === country)),
-    [rows, minRating, country],
+    () => (rows ?? []).filter((r) => (r.rating ?? 0) >= minRating && (!place || r.stop.countryCode === place)),
+    [rows, minRating, place],
   )
   const pins = useMemo<MapPin[]>(
     () =>
@@ -72,7 +76,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
       })),
     [shown],
   )
-  const open = (r: Row) => go({ name: 'trip', id: r.trip.id, stop: r.stop.id })
+  const [picked, pick] = useVenuePick()
 
   return (
     <div className="page">
@@ -100,7 +104,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
             ))}
           </div>
           {countries.length > 1 && (
-            <select className="field meal-country" value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Paese">
+            <select className="field meal-country" value={place} onChange={(e) => setCountry(e.target.value)} aria-label="Paese">
               <option value="">Tutti i paesi</option>
               {countries.map(([code, name]) => (
                 <option key={code} value={code}>
@@ -110,17 +114,12 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
             </select>
           )}
 
-          {/* La chiave rifà l'inquadratura quando cambiano i filtri. */}
+          {/* La chiave rifà l'inquadratura quando cambiano i filtri. Agganciata in
+              alto: il locale scelto nell'elenco si vede centrato anche scorrendo. */}
           {pins.length > 0 && (
-            <MapView
-              pins={pins}
-              lines={[]}
-              fitKey={`${minRating}|${country}|${pins.length}`}
-              onPin={(id) => {
-                const r = shown.find((x) => x.stop.id === id)
-                if (r) open(r)
-              }}
-            />
+            <div className="venue-map">
+              <MapView pins={pins} lines={[]} fitKey={`${minRating}|${place}|${pins.length}`} focusId={picked} onPin={(id) => pick(id, true)} />
+            </div>
           )}
 
           <p className="meta" style={{ margin: '10px 2px' }}>
@@ -129,7 +128,8 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
           {shown.map((r) => {
             const meal = r.stop.meal
             return (
-              <button key={r.stop.id} className="stop compact" onClick={() => open(r)}>
+              <div key={r.stop.id} id={`venue-${r.stop.id}`} className={`venue${picked === r.stop.id ? ' on' : ''}`}>
+              <button className="stop compact" aria-expanded={picked === r.stop.id} onClick={() => pick(r.stop.id)}>
                 {r.photo && <img className="thumb" src={thumbUrl(r.photo)} alt="" />}
                 <span className="body">
                   <span className="place" style={{ display: 'block' }}>
@@ -138,7 +138,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
                   <span className="meta" style={{ display: 'block' }}>
                     {meal.kind ? `${meal.kind} · ` : ''}
                     {r.rating ? <span className="meal-stars">{'★'.repeat(r.rating)}</span> : 'senza voto'}
-                    {r.visits > 1 ? ` · ${r.visits} visite` : ''}
+                    {r.visits.length > 1 ? ` · ${r.visits.length} visite` : ''}
                   </span>
                   <span className="meta" style={{ display: 'block' }}>
                     <span className="dot" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: r.trip.color, marginRight: 5 }} />
@@ -147,6 +147,13 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
                   {r.stop.note && <span className="meta" style={{ display: 'block' }}>{r.stop.note}</span>}
                 </span>
               </button>
+              {picked === r.stop.id && (
+                <VenueVisits
+                  one="Apri la tappa"
+                  visits={r.visits.map((v) => ({ key: v.stop.id, label: `${v.trip.name} · ${fmtDayShort(v.stop.first)} · ${fmtTime(v.stop.first)}`, color: v.trip.color, open: () => go({ name: 'trip', id: v.trip.id, stop: v.stop.id }) }))}
+                />
+              )}
+              </div>
             )
           })}
         </>
