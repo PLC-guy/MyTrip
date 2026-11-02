@@ -40,7 +40,20 @@
  * - S4: iscrizioni alle notifiche controllate (al massimo SUBS_MAX per viaggio,
  *   solo servizi push veri, campi di lunghezza fissa) e coda tenuta se l'invio
  *   non riesce per un problema momentaneo.
+ *
+ * CONTEGGIO E PAGINA DI STATO (richiesta dell'utente, 2/11/2026, fase di prova):
+ * - `POST /ping`: ogni app manda una volta al giorno un codice casuale, la
+ *   versione, se è installata e il sistema (`src/ping.ts`). Niente dati dei
+ *   viaggi. Si contano i codici diversi.
+ * - Conteggi e date delle condivisioni stanno in un Durable Object
+ *   (`Contatore`, archivio SQLite): non consumano le scritture di KV.
+ * - `GET /stato`: pagina per l'utente, protetta dal segreto `ADMIN_KEY` del
+ *   Worker. La chiave va dopo il «#» del link (non arriva al server) e la
+ *   pagina la manda in un'intestazione a `GET /stato/dati`. Senza il segreto
+ *   impostato la pagina non esiste.
  */
+
+import { DurableObject } from 'cloudflare:workers'
 
 const ORIGINS = ['https://plc-guy.github.io', 'http://localhost:5180', 'http://localhost:4180']
 const MAX_INDEX = 8 * 1024 * 1024
@@ -78,7 +91,7 @@ async function tooMany(env, req, what) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origin = req.headers.get('Origin')
     const cors = {
       'Access-Control-Allow-Origin': ORIGINS.includes(origin) ? origin : ORIGINS[0],
@@ -94,6 +107,17 @@ export default {
     try {
       let m
       if (req.method !== 'GET' && (await tooMany(env, req, 'w'))) return reply('troppe richieste', 429)
+      if (path === '/ping' && req.method === 'POST') {
+        const t = await req.json().catch(() => null)
+        if (!validPing(t)) return reply('non valido', 400)
+        await counter(env).ping(t)
+        return reply('ok')
+      }
+      if (path === '/stato' && req.method === 'GET') return env.ADMIN_KEY ? new Response(STATO_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }) : reply('non trovato', 404)
+      if (path === '/stato/dati' && req.method === 'GET') {
+        if (!env.ADMIN_KEY || !(await sameSecret(req.headers.get('Authorization') ?? '', `Bearer ${env.ADMIN_KEY}`))) return reply('non autorizzato', 403)
+        return reply(JSON.stringify(await statusReport(env)), 200, { 'Content-Type': 'application/json' })
+      }
       if ((m = new RegExp(`^/s/${ID}/sub$`).exec(path)) && req.method === 'POST') return reply(await subscribe(env, m[1], await req.json()))
       if ((m = new RegExp(`^/s/${ID}/sub/([A-Za-z0-9_-]{43})$`).exec(path)) && req.method === 'DELETE') return reply(await unsubscribe(env, m[1], m[2]))
       if ((m = new RegExp(`^/s/${ID}/n$`).exec(path)) && req.method === 'POST') {
@@ -131,6 +155,8 @@ export default {
         if (body.byteLength > (photo ? MAX_PHOTO : MAX_INDEX)) return reply('troppo grande', 413)
         const version = req.headers.get('X-Version') ?? String(Date.now())
         await env.KV.put(key, body, part === 'm' ? { metadata: { v: version } } : undefined)
+        // Data dell'ultimo aggiornamento, per la pagina di stato (non blocca la risposta).
+        if (part === 'm') ctx.waitUntil(counter(env).shareSeen(id).catch(() => {}))
         return reply('ok')
       }
 
@@ -147,6 +173,7 @@ export default {
       } while (cursor)
       // L'id resta revocato per sempre (S9): nessuno può ricrearlo.
       await env.KV.put(`a/${id}`, REVOKED)
+      ctx.waitUntil(counter(env).shareEnded(id).catch(() => {}))
       return reply('ok')
     } catch (e) {
       // Niente dettagli interni nella risposta.
@@ -367,3 +394,150 @@ async function checkAuth(env, id, header, mayCreate) {
   await env.KV.put(`a/${id}`, hash)
   return true
 }
+
+// --- Conteggio e pagina di stato ---------------------------------------------
+
+/** Il contatore è uno solo per tutto il server. */
+const counter = (env) => env.CONTA.get(env.CONTA.idFromName('mytrip'))
+
+function validPing(t) {
+  return (
+    !!t &&
+    typeof t.i === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(t.i) &&
+    typeof t.v === 'string' &&
+    /^[0-9A-Za-z.+-]{1,24}$/.test(t.v) &&
+    (t.m === 'app' || t.m === 'browser') &&
+    (t.o === 'ios' || t.o === 'android' || t.o === 'desktop')
+  )
+}
+
+/** Confronto del segreto senza dare indizi col tempo di risposta. */
+async function sameSecret(a, b) {
+  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest('SHA-256', enc(s))))
+  return crypto.subtle.timingSafeEqual(x, y)
+}
+
+/**
+ * Telefoni (dal contatore) e viaggi condivisi adesso (da KV: permesso attivo,
+ * numero di foto, iscritti alle notifiche). Chi segue senza notifiche non si
+ * vede: legge e basta, senza lasciare traccia. Solo letture di KV.
+ */
+async function statusReport(env) {
+  const { telefoni, condivisioni } = await counter(env).report()
+  const dates = new Map(condivisioni.map((c) => [c.id, c]))
+  const shares = []
+  let revoked = 0
+  let cursor
+  do {
+    const page = await env.KV.list({ prefix: 'a/', cursor })
+    for (const k of page.keys) {
+      const id = k.name.slice(2)
+      if ((await env.KV.get(k.name)) === REVOKED) {
+        revoked++
+        continue
+      }
+      const photos = await env.KV.list({ prefix: `${id}/p/` })
+      const subs = (await env.KV.get(`${id}/subs`, 'json')) ?? {}
+      const d = dates.get(id)
+      // Solo l'inizio del codice: basta a distinguerli, e la pagina non dà il link.
+      shares.push({ id: id.slice(0, 6), photos: photos.list_complete ? photos.keys.length : `${photos.keys.length}+`, subs: Object.keys(subs).length, first: d?.primo, last: d?.ultimo })
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  return { now: Date.now(), telefoni, shares, revoked }
+}
+
+/** Archivio SQLite del conteggio: una riga per telefono, una per viaggio condiviso. */
+export class Contatore extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env)
+    this.sql = ctx.storage.sql
+    this.sql.exec('CREATE TABLE IF NOT EXISTS telefoni (id TEXT PRIMARY KEY, primo INTEGER, ultimo INTEGER, versione TEXT, modo TEXT, sistema TEXT)')
+    this.sql.exec('CREATE TABLE IF NOT EXISTS condivisioni (id TEXT PRIMARY KEY, primo INTEGER, ultimo INTEGER, fine INTEGER)')
+  }
+
+  ping(t) {
+    const now = Date.now()
+    this.sql.exec(
+      'INSERT INTO telefoni VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET ultimo = excluded.ultimo, versione = excluded.versione, modo = excluded.modo, sistema = excluded.sistema',
+      t.i,
+      now,
+      now,
+      t.v,
+      t.m,
+      t.o,
+    )
+  }
+
+  shareSeen(id) {
+    const now = Date.now()
+    this.sql.exec('INSERT INTO condivisioni VALUES (?, ?, ?, NULL) ON CONFLICT(id) DO UPDATE SET ultimo = excluded.ultimo', id, now, now)
+  }
+
+  shareEnded(id) {
+    this.sql.exec('UPDATE condivisioni SET fine = ? WHERE id = ?', Date.now(), id)
+  }
+
+  report() {
+    return {
+      telefoni: this.sql.exec('SELECT primo, ultimo, versione, modo, sistema FROM telefoni').toArray(),
+      condivisioni: this.sql.exec('SELECT id, primo, ultimo FROM condivisioni WHERE fine IS NULL').toArray(),
+    }
+  }
+}
+
+/** La pagina di stato: legge la chiave dopo il «#» e chiede i dati. */
+const STATO_HTML = `<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>MyTrip · stato</title>
+<style>
+body{font:16px/1.45 -apple-system,system-ui,sans-serif;margin:0 auto;padding:16px;background:#f4f1e8;color:#1d2a24;max-width:640px}
+h1{font-size:22px;margin:4px 0 2px}h2{font-size:17px;margin:22px 0 8px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.box{background:#fff;border-radius:10px;padding:10px 12px}.box b{display:block;font-size:24px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden}
+td,th{padding:7px 10px;text-align:left;border-bottom:1px solid #eee;font-size:14px}
+.small{font-size:13px;color:#5b6660}.old{color:#a3432a;font-weight:600}
+</style></head><body>
+<h1>MyTrip · stato</h1><p class="small" id="when">Carico…</p><div id="out"></div>
+<script>
+const key = decodeURIComponent(location.hash.slice(1))
+const out = document.getElementById('out')
+const when = document.getElementById('when')
+const DAY = 86400000
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+const fmt = (ms) => (ms ? new Date(ms).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
+const group = (list, f) => Object.entries(list.reduce((a, x) => ((a[f(x)] = (a[f(x)] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1])
+const rows = (pairs) => (pairs.length ? '<table>' + pairs.map(([k, n]) => '<tr><td>' + esc(k) + '</td><td>' + n + '</td></tr>').join('') + '</table>' : '<p class="small">Nessuna.</p>')
+async function load() {
+  if (!key) { when.textContent = 'Manca la chiave: apri il link completo, con la parte dopo il #.'; return }
+  const r = await fetch('/stato/dati', { headers: { Authorization: 'Bearer ' + key }, cache: 'no-store' })
+  if (!r.ok) { when.textContent = r.status === 403 ? 'Chiave non valida.' : 'Il server non risponde.'; return }
+  const d = await r.json()
+  const t = d.telefoni
+  const active = (n) => t.filter((x) => d.now - x.ultimo < n * DAY)
+  const m30 = active(30)
+  when.textContent = 'Aggiornato ' + fmt(d.now) + '. Ogni app si fa contare al massimo una volta al giorno, quando si apre.'
+  let h = '<h2>App in uso</h2><div class="grid">'
+  h += '<div class="box"><b>' + active(1).length + '</b>nelle ultime 24 ore</div>'
+  h += '<div class="box"><b>' + active(7).length + '</b>negli ultimi 7 giorni</div>'
+  h += '<div class="box"><b>' + m30.length + '</b>negli ultimi 30 giorni</div>'
+  h += '<div class="box"><b>' + t.length + '</b>viste in tutto</div>'
+  h += '<div class="box"><b>' + t.filter((x) => d.now - x.primo < 7 * DAY).length + '</b>nuove negli ultimi 7 giorni</div></div>'
+  h += '<h2>Ultimi 30 giorni, per versione</h2>' + rows(group(m30, (x) => x.versione))
+  h += '<h2>Installata o nel browser</h2>' + rows(group(m30, (x) => (x.modo === 'app' ? 'installata' : 'nel browser') + ' · ' + x.sistema))
+  h += '<h2>Viaggi condivisi adesso: ' + d.shares.length + '</h2>'
+  if (d.shares.length) {
+    h += '<table><tr><th>Codice</th><th>Foto</th><th>Notifiche</th><th>Ultimo aggiornamento</th></tr>'
+    for (const s of d.shares.sort((a, b) => (b.last || 0) - (a.last || 0))) {
+      const age = s.last ? Math.floor((d.now - s.last) / DAY) : null
+      h += '<tr><td>' + esc(s.id) + '…</td><td>' + esc(s.photos) + '</td><td>' + s.subs + '</td><td' + (age !== null && age > 14 ? ' class="old"' : '') + '>' + fmt(s.last) + (age ? ' · ' + age + ' g fa' : '') + '</td></tr>'
+    }
+    h += '</table>'
+  }
+  h += '<p class="small">Condivisioni interrotte: ' + d.revoked + '. In rosso quelle ferme da più di 14 giorni. «Notifiche» conta chi segue con le notifiche accese, chi segue senza notifiche non si vede. Un trattino vuol dire nessun aggiornamento da quando c’è il contatore.</p>'
+  out.innerHTML = h
+}
+load().catch(() => { when.textContent = 'Il server non risponde.' })
+</script></body></html>`

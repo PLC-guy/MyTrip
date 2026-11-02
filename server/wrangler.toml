@@ -9,6 +9,16 @@ compatibility_date = "2026-10-01"
 binding = "KV"
 id = "5de50cb092264124a1fbc06864d9ab74"
 
+# Contatore delle app in uso e date delle condivisioni (worker.js, `Contatore`):
+# un Durable Object con archivio SQLite, compreso nel piano gratuito.
+[[durable_objects.bindings]]
+name = "CONTA"
+class_name = "Contatore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Contatore"]
+
 # Ogni 15 minuti: riepiloghi giornalieri delle notifiche e novità in attesa (worker.js, `scheduled`).
 [triggers]
 crons = ["*/15 * * * *"]
