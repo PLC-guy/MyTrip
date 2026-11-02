@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useSessionState } from './sessionState'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, followedTripIds, stopTitle, type Meal, type Photo, type Stop, type Trip } from './db'
 import { fmtDay, plural } from './format'
@@ -28,8 +29,9 @@ const RATINGS = [0, 3, 4, 5]
  * anche se ci si è stati più volte (venues.ts, richiesta del 2/11/2026).
  */
 export default function MealsScreen({ go }: { go: (r: Route) => void }) {
-  const [minRating, setMinRating] = useState(0)
-  const [country, setCountry] = useState('')
+  // Filtri ricordati finché l'app è aperta (sessionState.ts).
+  const [minRating, setMinRating] = useSessionState('mytrip:meals-rating', 0, (v): v is number => RATINGS.includes(v as number))
+  const [country, setCountry] = useSessionState('mytrip:meals-country', '')
 
   const rows = useLiveQuery(async (): Promise<Row[]> => {
     const trips = new Map((await db.trips.toArray()).map((t) => [t.id, t]))

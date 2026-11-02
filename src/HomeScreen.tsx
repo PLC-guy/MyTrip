@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSessionState } from './sessionState'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, KIND_FILTERS, newId, TRIP_COLORS, type KindFilter, type Photo, type Share, type Stop, type Trip, type TripKind } from './db'
@@ -16,16 +17,28 @@ import { backupDue, describeBackupAge, photosToKeep, runBackup, snoozeBackup, us
 import type { Route } from './App'
 
 const KIND_KEY = 'mytrip:home-kind'
+// Fino alla 0.25.1 il filtro era in localStorage (ricordato per sempre): si toglie.
+try {
+  localStorage.removeItem(KIND_KEY)
+} catch {
+  // Niente da togliere.
+}
 
 /** «In viaggio adesso»: ultima foto entro 48 ore (scelta dell'utente, 30/10/2026). */
 const LIVE_MS = 48 * 3600_000
 
-/** Sezioni della Home chiuse (richiesta dell'utente, 1/11/2026), ricordate sul dispositivo. */
+/**
+ * Sezioni della Home chiuse (richiesta dell'utente, 1/11/2026). Ricordate SOLO
+ * finché l'app resta aperta, anche in secondo piano (sessionStorage): chiusa e
+ * riaperta, la Home riparte con tutte le sezioni aperte (scelta dell'utente,
+ * 2/11/2026). Fino alla 0.25.0 erano in localStorage: la chiave vecchia si toglie.
+ */
 const CLOSED_KEY = 'mytrip:home-closed'
 type Section = 'own' | 'follow'
 function readClosed(): Section[] {
   try {
-    return JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '[]') as Section[]
+    localStorage.removeItem(CLOSED_KEY)
+    return JSON.parse(sessionStorage.getItem(CLOSED_KEY) ?? '[]') as Section[]
   } catch {
     return []
   }
@@ -64,24 +77,11 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
 
   /**
    * Filtro Piacere/Lavoro (richiesta dell'utente, 30/10/2026): vale per elenco,
-   * mappa di tutti i viaggi e sottotitolo. Ricordato su questo dispositivo.
+   * mappa di tutti i viaggi e sottotitolo. Ricordato finché l'app è aperta
+   * (sessionState.ts); riaprendola torna «Tutti». Fino alla 0.25.1 era in
+   * localStorage: la chiave vecchia si toglie.
    */
-  const [kindFilter, setKindFilter] = useState<KindFilter>(() => {
-    try {
-      const saved = localStorage.getItem(KIND_KEY)
-      return KIND_FILTERS.some((f) => f.key === saved) ? (saved as KindFilter) : 'tutti'
-    } catch {
-      return 'tutti'
-    }
-  })
-  const chooseKind = (k: KindFilter) => {
-    setKindFilter(k)
-    try {
-      localStorage.setItem(KIND_KEY, k)
-    } catch {
-      // Senza memoria del browser il filtro vale solo fino alla chiusura.
-    }
-  }
+  const [kindFilter, chooseKind] = useSessionState<KindFilter>(KIND_KEY, 'tutti', (v: unknown): v is KindFilter => KIND_FILTERS.some((f) => f.key === v))
 
   const allRows = useLiveQuery(async (): Promise<TripRow[]> => {
     const trips = await db.trips.toArray()
@@ -126,7 +126,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     const next = closed.includes(s) ? closed.filter((c) => c !== s) : [...closed, s]
     setClosed(next)
     try {
-      localStorage.setItem(CLOSED_KEY, JSON.stringify(next))
+      sessionStorage.setItem(CLOSED_KEY, JSON.stringify(next))
     } catch {
       // Senza memoria del browser vale fino alla chiusura.
     }

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useSessionState } from './sessionState'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, followedTripIds, KIND_FILTERS, type KindFilter } from './db'
 import { fmtRange, plural } from './format'
@@ -31,7 +32,8 @@ interface CountryRow {
 }
 
 export default function CountriesScreen({ go }: { go: (r: Route) => void }) {
-  const [filter, setFilter] = useState<KindFilter>('tutti')
+  // Ricordato finché l'app è aperta (sessionState.ts).
+  const [filter, setFilter] = useSessionState<KindFilter>('mytrip:countries-kind', 'tutti', (v: unknown): v is KindFilter => KIND_FILTERS.some((f) => f.key === v))
   const color = useCountryColor()
   const data = useLiveQuery(async () => {
     const skip = await followedTripIds()

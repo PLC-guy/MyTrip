@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useSessionState } from './sessionState'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Lodging, type Trip } from './db'
 import { fmtDay, plural } from './format'
@@ -31,8 +32,9 @@ const RATINGS = [0, 3, 4, 5]
  * 2/11/2026). Il paese è quello dell'ultima tappa del giorno.
  */
 export default function LodgingsScreen({ go }: { go: (r: Route) => void }) {
-  const [minRating, setMinRating] = useState(0)
-  const [country, setCountry] = useState('')
+  // Filtri ricordati finché l'app è aperta (sessionState.ts).
+  const [minRating, setMinRating] = useSessionState('mytrip:lodgings-rating', 0, (v): v is number => RATINGS.includes(v as number))
+  const [country, setCountry] = useSessionState('mytrip:lodgings-country', '')
 
   const rows = useLiveQuery(async (): Promise<Row[]> => {
     const nights = await ownNights()

@@ -221,10 +221,13 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   }, [id])
 
   const stats = useMemo(() => (data ? tripStats(data.stops, data.photos, legs) : undefined), [data, legs])
-  // «Il viaggio in numeri» aperto o chiuso, ricordato sul dispositivo.
+  // «Il viaggio in numeri» aperto o chiuso: ricordato solo finché l'app resta
+  // aperta (sessionStorage); riaprendola riparte chiuso (scelta dell'utente,
+  // 2/11/2026; fino alla 0.25.0 in localStorage, la chiave vecchia si toglie).
   const [statsOpen, setStatsOpen] = useState(() => {
     try {
-      return localStorage.getItem('mytrip:stats-open') === '1'
+      localStorage.removeItem('mytrip:stats-open')
+      return sessionStorage.getItem('mytrip:stats-open') === '1'
     } catch {
       return false
     }
@@ -232,7 +235,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   const toggleStats = () => {
     setStatsOpen(!statsOpen)
     try {
-      localStorage.setItem('mytrip:stats-open', statsOpen ? '0' : '1')
+      sessionStorage.setItem('mytrip:stats-open', statsOpen ? '0' : '1')
     } catch {
       // Senza memoria del browser vale fino alla chiusura.
     }
