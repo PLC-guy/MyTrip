@@ -9,7 +9,7 @@ import { fmtBytes, fmtRange, plural } from './format'
 import { geocodePending } from './geocode'
 import { routesPending } from './routing'
 import { IconBack } from './icons'
-import { applyUpdate, buildLabel, versionLabel } from './update'
+import { buildLabel, checkForUpdate, forceUpdate, installUpdate, takeUpdatedFrom, versionLabel } from './update'
 import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
 import { THEMES, setTheme, useTheme } from './theme'
 import { setProfile, useProfile } from './profile'
@@ -59,7 +59,27 @@ function NavItem({ title, due, onClick }: { title: string; due?: boolean; onClic
 
 function SettingsHome({ go }: { go: (r: Route) => void }) {
   const backup = useBackupState()
-  const [msg, setMsg] = useState<string>()
+  // «Cerca aggiornamenti»: riscontro come «Aggiorna ora» dei viaggi seguiti.
+  const [updating, setUpdating] = useState<'controllo' | 'installo'>()
+  const [update, setUpdate] = useState<{ text: string; retry?: boolean }>(() => {
+    const from = takeUpdatedFrom()
+    return from ? { text: `App aggiornata: prima avevi la ${from}, ora la ${__VERSION__}.` } : { text: '' }
+  })
+  async function searchUpdate() {
+    setUpdating('controllo')
+    setUpdate({ text: '' })
+    const [r] = await Promise.all([checkForUpdate(), new Promise((res) => setTimeout(res, 700))])
+    if (r === 'nuova') {
+      setUpdating('installo')
+      setUpdate({ text: "C'è una versione nuova, la installo. L'app si riapre da sola." })
+      installUpdate()
+      return
+    }
+    setUpdating(undefined)
+    if (r === 'aggiornata') setUpdate({ text: `Hai già l'ultima versione, la ${__VERSION__}.`, retry: true })
+    else if (r === 'offline') setUpdate({ text: 'Serve la connessione a internet per aggiornare.' })
+    else setUpdate({ text: 'Non riesco a controllare adesso. Riprova tra poco.', retry: true })
+  }
   const [storage, setStorage] = useState<{ usage?: number; persisted?: boolean }>({})
   const counts = useLiveQuery(async () => ({ trips: await db.trips.count(), stops: await db.stops.count(), photos: await db.photos.count() }))
   const keep = useLiveQuery(photosToKeep)
@@ -105,19 +125,24 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         <div><span className="k">Pubblicata</span><span>{buildLabel()}</span></div>
       </div>
       <div style={{ marginTop: 10 }}>
-        <button
-          className="btn ghost"
-          onClick={() => {
-            // ⚠️ Senza rete NON si riparte: si toglierebbe la copia offline e
-            // l'app non si aprirebbe più finché la connessione non torna.
-            if (!navigator.onLine) setMsg('Serve la connessione a internet per aggiornare.')
-            else void applyUpdate()
-          }}
-        >
-          Ricarica l'ultima versione
+        <button className="btn ghost" disabled={!!updating} onClick={() => void searchUpdate()}>
+          {updating === 'controllo' ? 'Controllo…' : updating === 'installo' ? 'Installo…' : 'Cerca aggiornamenti'}
         </button>
       </div>
-      {msg && <div className="note-box" style={{ marginTop: 10 }}>{msg}</div>}
+      {updating === 'controllo' && <p className="small" role="status">Controllo se c'è una versione nuova…</p>}
+      {update.text && (
+        <p className="small" role="status">
+          {update.text}
+          {/* Rimedio se l'app sembra bloccata: riparte scaricando tutto dalla
+              rete. ⚠️ Mai senza rete: si toglierebbe la copia offline. */}
+          {update.retry && navigator.onLine && (
+            <>
+              {' '}
+              <button className="small-link" onClick={() => void forceUpdate()}>Ricarica comunque</button>
+            </>
+          )}
+        </p>
+      )}
     </div>
   )
 }

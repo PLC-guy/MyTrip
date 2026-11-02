@@ -110,6 +110,61 @@ export async function forceUpdate(): Promise<void> {
   location.reload()
 }
 
+/**
+ * «Cerca aggiornamenti» in Impostazioni (richiesta dell'utente, 2/11/2026: il
+ * vecchio «Ricarica l'ultima versione» ripartiva sempre, senza dire niente, e
+ * riscaricava tutta l'app anche quando era già aggiornata).
+ * Chiede al service worker se c'è una versione nuova e aspetta che si scarichi:
+ * 'nuova' → la si applica con `applyUpdate`; 'aggiornata' → niente da fare.
+ */
+export type UpdateCheck = 'nuova' | 'aggiornata' | 'offline' | 'errore'
+const UPDATED_KEY = 'mytrip:updated-from'
+
+export async function checkForUpdate(): Promise<UpdateCheck> {
+  if (!navigator.onLine) return 'offline'
+  if (!('serviceWorker' in navigator)) return 'aggiornata'
+  try {
+    const registration = await navigator.serviceWorker.getRegistration()
+    if (!registration) return 'aggiornata'
+    if (registration.waiting) return 'nuova'
+    await registration.update()
+    const worker = registration.installing
+    if (!worker) return registration.waiting ? 'nuova' : 'aggiornata'
+    // Si aspetta che la versione nuova finisca di scaricarsi (al massimo 60 s).
+    const ok = await new Promise<boolean>((resolve) => {
+      const timer = window.setTimeout(() => resolve(false), 60_000)
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed') { window.clearTimeout(timer); resolve(true) }
+        if (worker.state === 'redundant') { window.clearTimeout(timer); resolve(false) }
+      })
+    })
+    return ok ? 'nuova' : 'errore'
+  } catch {
+    return 'errore'
+  }
+}
+
+/** Applica la versione trovata e ricorda da quale si partiva, per dirlo dopo il ricaricamento. */
+export function installUpdate(): void {
+  try {
+    sessionStorage.setItem(UPDATED_KEY, __VERSION__)
+  } catch {
+    // Senza memoria: dopo il ricaricamento non si dirà «aggiornata».
+  }
+  void applyUpdate()
+}
+
+/** Dopo un aggiornamento chiesto in Impostazioni: la versione di prima, una volta sola. */
+export function takeUpdatedFrom(): string | undefined {
+  try {
+    const from = sessionStorage.getItem(UPDATED_KEY) ?? undefined
+    sessionStorage.removeItem(UPDATED_KEY)
+    return from && from !== __VERSION__ ? from : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export const versionLabel = () => `${__VERSION__} · ${__COMMIT__}`
 
 const BUILT = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
