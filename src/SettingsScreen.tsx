@@ -274,9 +274,21 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
   const trips = useLiveQuery(() => db.trips.count())
   const [choosing, setChoosing] = useState(false)
   const [ask, setAsk] = useState<ParsedImport>()
+  // Import in corso: un backup completo con le miniature a 1080 px può pesare
+  // decine di MB e il telefono ci mette un po' (2/11/2026: senza avviso
+  // sembrava che non succedesse niente).
+  const [importing, setImporting] = useState(false)
+  // Domanda, avviso e risultato stanno sotto il pulsante: sul telefono possono
+  // finire fuori vista, quindi la pagina ci scorre da sola.
+  const outcome = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // Scorrimento immediato: quello «morbido» nel browser di prova a volte non partiva.
+    if (ask || msg || importing) outcome.current?.scrollIntoView({ block: 'center' })
+  }, [ask, msg, importing])
 
   async function finish(parsed: ParsedImport, withShares: boolean) {
-    const r = await applyImport(parsed, withShares)
+    setImporting(true)
+    const r = await applyImport(parsed, withShares).finally(() => setImporting(false))
     void geocodePending()
     void routesPending()
     return `Hai importato ${r.trips.length > 1 ? `${r.trips.slice(0, -1).join(', ')} e ${r.trips.at(-1)}` : r.trips[0]}. ${plural(r.photos, 'foto', 'foto')} in tutto.`
@@ -345,7 +357,8 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
             e.target.value = ''
             if (!file) return
             void run(async () => {
-              const parsed = await readImport(file)
+              setImporting(true)
+              const parsed = await readImport(file).finally(() => setImporting(false))
               // Un backup con condivisioni in diretta: si chiede prima (sicurezza, backup.ts).
               if (parsed.shareTrips.length) return void setAsk(parsed)
               return finish(parsed, false)
@@ -353,6 +366,12 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
           }}
         />
       </label>
+      <div ref={outcome}>
+      {importing && (
+        <div className="note-box" style={{ marginTop: 12 }} role="status">
+          Leggo il file. Se è un backup grande può volerci un po', tieni l'app aperta.
+        </div>
+      )}
       {ask && (
         <div className="note-box warm" style={{ marginTop: 12 }} role="alert">
           <p style={{ marginTop: 0 }}>
@@ -369,6 +388,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
         </div>
       )}
       {msg && <div className="note-box" style={{ marginTop: 12 }} role="status">{msg}</div>}
+      </div>
     </div>
   )
 }

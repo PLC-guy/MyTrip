@@ -225,8 +225,18 @@ export async function readImport(file: File): Promise<ParsedImport> {
   if (typeof data.format !== 'number' || data.format > FORMAT) {
     throw new Error("Il file viene da una versione più recente dell'app: aggiornala e riprova.")
   }
+  // Si chiede solo per le condivisioni che si riprenderebbero davvero: quelle di
+  // viaggi che sul telefono non ci sono ancora (le stesse regole di applyImport).
+  // Ripristinando sullo stesso telefono non c'è niente da chiedere (2/11/2026:
+  // la domanda compariva sotto il pulsante, fuori vista, e l'import sembrava fermo).
   const names = new Map(data.trips.map((t) => [t.id, t.name]))
-  const shareTrips = data.kind === 'backup' && Array.isArray(data.shares) ? data.shares.map((s) => names.get(s.tripId)).filter((n): n is string => !!n) : []
+  const shares = data.kind === 'backup' && Array.isArray(data.shares) ? data.shares : []
+  const present = new Set((await db.trips.bulkGet(shares.map((s) => s.tripId))).flatMap((t) => (t ? [t.id] : [])))
+  const taken = new Set((await db.shares.toArray()).map((s) => s.tripId))
+  const shareTrips = shares
+    .filter((s) => !present.has(s.tripId) && !taken.has(s.tripId))
+    .map((s) => names.get(s.tripId))
+    .filter((n): n is string => !!n)
   return { data, shareTrips }
 }
 
