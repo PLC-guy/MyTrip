@@ -27,6 +27,45 @@ function commitRef(): string {
  */
 const BASE = '/MyTrip/'
 
+/**
+ * PROTEZIONE CONTRO CODICE ESTRANEO (CSP, revisione S6, 0.24.0)
+ *
+ * La pagina può eseguire solo il proprio codice e parlare solo con i servizi
+ * elencati qui. Se un giorno entrasse codice da fuori (un difetto di una
+ * libreria, un dato costruito apposta), non potrebbe girare né mandare i viaggi
+ * altrove. ⚠️ Un servizio nuovo va aggiunto a `connect-src`, o l'app non lo
+ * raggiunge (errore in console «Content Security Policy»).
+ * - `wasm-unsafe-eval`: il codificatore JPEG (@jsquash/jpeg) è WebAssembly.
+ * - `worker-src 'self'`: il lavoratore di MapLibre 6 è un file dell'app (mapStyle.ts).
+ * - `style-src 'unsafe-inline'`: React e MapLibre scrivono stili direttamente
+ *   sugli elementi. Non permette di eseguire codice.
+ * - `img-src blob: data:`: miniature dall'archivio, copertine, disegni dei pallini.
+ * Solo nella build: in sviluppo Vite inserisce script suoi nella pagina.
+ */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "worker-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' blob: data:",
+  "font-src 'self'",
+  "media-src 'self' blob: mediastream:",
+  [
+    "connect-src 'self'",
+    'https://tiles.openfreemap.org',
+    'https://nominatim.openstreetmap.org',
+    'https://valhalla1.openstreetmap.de',
+    'https://photon.komoot.io',
+    'https://overpass-api.de',
+    'https://api.open-meteo.com',
+    'https://archive-api.open-meteo.com',
+    'https://mytrip-sync.mytrip-viaggi.workers.dev',
+  ].join(' '),
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ')
+
 export default defineConfig({
   base: BASE,
   build: {
@@ -50,6 +89,11 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'mytrip-csp',
+      apply: 'build',
+      transformIndexHtml: () => [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' }],
+    },
     VitePWA({
       // 'prompt' e non 'autoUpdate': il passaggio alla versione nuova lo decide
       // `src/update.ts` (in automatico, ma solo nei momenti sicuri).

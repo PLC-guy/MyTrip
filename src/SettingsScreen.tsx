@@ -14,7 +14,6 @@ import { COUNTRY_COLORS, setCountryColor, useCountryColor } from './appearance'
 import { THEMES, setTheme, useTheme } from './theme'
 import { setProfile, useProfile } from './profile'
 import { pushAll } from './sync'
-import { refreshThumbs, type RefreshReport } from './testTools'
 import { DEFAULT_GROUPING, GAP_LIMITS, getGrouping, RADIUS_LIMITS, setGrouping, useGrouping } from './grouping'
 import type { Route } from './App'
 
@@ -119,57 +118,6 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         </button>
       </div>
       {msg && <div className="note-box" style={{ marginTop: 10 }}>{msg}</div>}
-
-      <TestTools />
-    </div>
-  )
-}
-
-/** 🧪 Strumento di prova, DA TOGLIERE: vedi testTools.ts. */
-function TestTools() {
-  const input = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<{ done: number; total: number }>()
-  const [report, setReport] = useState<RefreshReport>()
-
-  async function run(files: File[]) {
-    if (!files.length) return
-    setReport(undefined)
-    setProgress({ done: 0, total: files.length })
-    try {
-      setReport(await refreshThumbs(files, (done, total) => setProgress({ done, total })))
-    } finally {
-      setProgress(undefined)
-    }
-  }
-
-  return (
-    <div className="test-tools">
-      <h2 className="section-title">🧪 Prove · temporaneo</h2>
-      <p className="small">
-        Strumento di prova, verrà tolto. Scegli dalla galleria le foto già presenti nell'app: le loro miniature si rifanno dall'originale. Le foto che l'app non ha vengono scartate e non entrano.
-      </p>
-      <input
-        ref={input}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(e) => {
-          const files = [...(e.target.files ?? [])]
-          e.target.value = ''
-          void run(files)
-        }}
-      />
-      <button className="btn ghost" disabled={!!progress} onClick={() => input.current?.click()}>
-        {progress ? `Rifaccio le miniature… ${progress.done} di ${progress.total}` : '🧪 Rifai le miniature dalla galleria'}
-      </button>
-      {report && (
-        <div className="list" style={{ marginTop: 10 }}>
-          <div><span className="k">Già presenti, ora più nitide</span><b>{report.updated}</b></div>
-          <div><span className="k">Non presenti, scartate</span><b>{report.skipped}</b></div>
-          <div><span className="k">Senza data o posizione, illeggibili</span><b>{report.unreadable}</b></div>
-        </div>
-      )}
     </div>
   )
 }

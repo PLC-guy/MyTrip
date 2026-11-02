@@ -1,5 +1,9 @@
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from 'maplibre-gl'
+// ⚠️ MapLibre 6 (dalla 0.24.0): solo moduli ES, e con Vite il «lavoratore» va
+// indicato a mano (guida di MapLibre per Vite). È un file dell'app, dallo
+// stesso indirizzo: così la CSP non deve permettere lavoratori da blob:.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 
 /**
  * STILE DELLA MAPPA, PREPARATO UNA VOLTA SOLA
@@ -56,5 +60,6 @@ export function mapStyle(): StyleSpecification | string {
 
 // Si comincia subito, all'apertura dell'app: le mappe trovano già tutto pronto.
 // Anche i «lavoratori» di MapLibre si avviano in anticipo.
+maplibregl.setWorkerUrl(workerUrl)
 refresh()
 maplibregl.prewarm()
