@@ -27,6 +27,19 @@
  * ⚠️ Piano gratuito di Workers KV: 1000 scritture e 1000 cancellazioni al giorno,
  * 100.000 letture, 1 GB. Oltre, il servizio risponde con un errore fino al giorno
  * dopo: l'app riprova da sola.
+ *
+ * SICUREZZA (revisione del 1/11/2026):
+ * - S9: «Smetti di condividere» non libera l'id: `a/<id>` diventa REVOKED per
+ *   sempre, così chi aveva il vecchio link non può riprenderselo e mandare un
+ *   viaggio falso (o vuoto) a chi seguiva.
+ * - S3: limite di richieste per indirizzo IP (binding `RL`, Rate Limiting dei
+ *   Workers). ⚠️ È un filtro largo, non una difesa completa: con le 1000
+ *   scritture al giorno di KV, chi vuole può comunque esaurirle in poco tempo.
+ *   La difesa vera è un magazzino con quote più alte (da valutare con i viaggi
+ *   insieme).
+ * - S4: iscrizioni alle notifiche controllate (al massimo SUBS_MAX per viaggio,
+ *   solo servizi push veri, campi di lunghezza fissa) e coda tenuta se l'invio
+ *   non riesce per un problema momentaneo.
  */
 
 const ORIGINS = ['https://plc-guy.github.io', 'http://localhost:5180', 'http://localhost:4180']
@@ -38,6 +51,31 @@ const GAP_MS = 15 * 60_000
 /** Messaggi tenuti in coda per iscritto: bastano per un riepilogo, stanno in una notifica. */
 const QUEUE_MAX = 12
 const VAPID_SUBJECT = 'https://plc-guy.github.io/MyTrip/'
+/** Segno al posto dell'impronta del permesso: viaggio condiviso e poi revocato. */
+const REVOKED = 'revocato'
+/** Telefoni che possono seguire un viaggio con le notifiche attive. */
+const SUBS_MAX = 20
+/** Servizi push veri (Apple, Google, Mozilla, Microsoft): solo verso questi si mandano notifiche. */
+const PUSH_HOSTS = [/^web\.push\.apple\.com$/, /^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /\.notify\.windows\.com$/]
+
+/** Errore con il suo codice HTTP, da mostrare senza dettagli interni. */
+class Refused extends Error {
+  constructor(status, message) {
+    super(message)
+    this.status = status
+  }
+}
+
+/**
+ * Limite per indirizzo IP (filtro largo: vedi in cima). Senza il binding `RL`
+ * (per esempio in locale) non limita niente.
+ */
+async function tooMany(env, req, what) {
+  if (!env.RL) return false
+  const ip = req.headers.get('CF-Connecting-IP') ?? 'sconosciuto'
+  const { success } = await env.RL.limit({ key: `${what}:${ip}` })
+  return !success
+}
 
 export default {
   async fetch(req, env) {
@@ -55,6 +93,7 @@ export default {
     const path = new URL(req.url).pathname
     try {
       let m
+      if (req.method !== 'GET' && (await tooMany(env, req, 'w'))) return reply('troppe richieste', 429)
       if ((m = new RegExp(`^/s/${ID}/sub$`).exec(path)) && req.method === 'POST') return reply(await subscribe(env, m[1], await req.json()))
       if ((m = new RegExp(`^/s/${ID}/sub/([A-Za-z0-9_-]{43})$`).exec(path)) && req.method === 'DELETE') return reply(await unsubscribe(env, m[1], m[2]))
       if ((m = new RegExp(`^/s/${ID}/n$`).exec(path)) && req.method === 'POST') {
@@ -82,6 +121,7 @@ export default {
       }
 
       if (req.method !== 'PUT' && req.method !== 'DELETE') return reply('metodo non ammesso', 405)
+      if (req.method === 'PUT' && !(await env.KV.get(`a/${id}`)) && (await tooMany(env, req, 'nuovo'))) return reply('troppe richieste', 429)
       const auth = await checkAuth(env, id, req.headers.get('Authorization'), req.method === 'PUT')
       if (!auth) return reply('non autorizzato', 403)
 
@@ -105,10 +145,13 @@ export default {
         await Promise.all(page.keys.map((k) => env.KV.delete(k.name)))
         cursor = page.list_complete ? undefined : page.cursor
       } while (cursor)
-      await env.KV.delete(`a/${id}`)
+      // L'id resta revocato per sempre (S9): nessuno può ricrearlo.
+      await env.KV.put(`a/${id}`, REVOKED)
       return reply('ok')
     } catch (e) {
-      return reply(`errore: ${e instanceof Error ? e.message : String(e)}`, 500)
+      // Niente dettagli interni nella risposta.
+      if (e instanceof Refused) return reply(e.message, e.status)
+      return reply('errore', 500)
     }
   },
 
@@ -117,10 +160,15 @@ export default {
     const ids = (await env.KV.get('subs-index', 'json')) ?? []
     const left = []
     for (const id of ids) {
-      const subs = await env.KV.get(`${id}/subs`, 'json')
-      if (!subs || Object.keys(subs).length === 0) continue
-      left.push(id)
-      if (await flush(env, id, subs, false)) await env.KV.put(`${id}/subs`, JSON.stringify(subs))
+      // Un viaggio con iscrizioni guaste non deve fermare gli altri.
+      try {
+        const subs = await env.KV.get(`${id}/subs`, 'json')
+        if (!subs || Object.keys(subs).length === 0) continue
+        left.push(id)
+        if (await flush(env, id, subs, false)) await env.KV.put(`${id}/subs`, JSON.stringify(subs))
+      } catch {
+        left.push(id)
+      }
     }
     if (left.length !== ids.length) await env.KV.put('subs-index', JSON.stringify(left))
   },
@@ -128,15 +176,32 @@ export default {
 
 // --- Notifiche ---------------------------------------------------------------
 
+/** Impronta dell'indirizzo push, come la calcola l'app (sha256 in base64url). */
+async function subHash(endpoint) {
+  return b64u(new Uint8Array(await crypto.subtle.digest('SHA-256', enc(endpoint))))
+}
+
 async function subscribe(env, id, body) {
   const { h, endpoint, keys, mode, hour, tz } = body ?? {}
-  if (typeof h !== 'string' || !/^https:\/\//.test(endpoint ?? '') || !keys?.p256dh || !keys?.auth) throw new Error('iscrizione non valida')
-  if (mode !== 'each' && mode !== 'daily') throw new Error('modalità non valida')
-  // Solo viaggi che esistono: niente iscrizioni a id inventati.
-  if (!(await env.KV.get(`a/${id}`))) throw new Error('viaggio non condiviso')
+  // Campi controllati uno per uno (S4): niente indirizzi qualsiasi né campi enormi.
+  let host = ''
+  try {
+    if (typeof endpoint === 'string' && endpoint.length <= 1024 && endpoint.startsWith('https://')) host = new URL(endpoint).hostname
+  } catch {
+    // indirizzo non valido
+  }
+  if (!PUSH_HOSTS.some((r) => r.test(host))) throw new Refused(400, 'iscrizione non valida')
+  if (typeof keys?.p256dh !== 'string' || !/^[A-Za-z0-9_-]{87}=?$/.test(keys.p256dh) || typeof keys?.auth !== 'string' || !/^[A-Za-z0-9_-]{22}(==)?$/.test(keys.auth)) throw new Refused(400, 'iscrizione non valida')
+  if (typeof h !== 'string' || h !== (await subHash(endpoint))) throw new Refused(400, 'iscrizione non valida')
+  if (mode !== 'each' && mode !== 'daily') throw new Refused(400, 'modalità non valida')
+  if (typeof tz !== 'string' || tz.length > 64) throw new Refused(400, 'fuso non valido')
+  // Solo viaggi condivisi adesso: niente iscrizioni a id inventati o revocati.
+  const auth = await env.KV.get(`a/${id}`)
+  if (!auth || auth === REVOKED) throw new Refused(404, 'viaggio non condiviso')
   const subs = (await env.KV.get(`${id}/subs`, 'json')) ?? {}
+  if (!subs[h] && Object.keys(subs).length >= SUBS_MAX) throw new Refused(429, 'troppe iscrizioni')
   const old = subs[h]
-  subs[h] = { endpoint, keys, mode, hour: Math.min(23, Math.max(0, Number(hour) || 20)), tz: String(tz || 'Europe/Rome'), last: old?.last, day: old?.day, queue: old?.queue ?? [] }
+  subs[h] = { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth }, mode, hour: Math.min(23, Math.max(0, Number(hour) || 20)), tz: tz || 'Europe/Rome', last: old?.last, day: old?.day, queue: old?.queue ?? [] }
   await env.KV.put(`${id}/subs`, JSON.stringify(subs))
   const index = (await env.KV.get('subs-index', 'json')) ?? []
   if (!index.includes(id)) await env.KV.put('subs-index', JSON.stringify([...index, id]))
@@ -179,11 +244,23 @@ async function flush(env, id, subs, fromNotify) {
       s.day = day
       daily = true
     }
-    const status = await sendPush(env, s, JSON.stringify({ s: id, d: daily ? 1 : 0, m: s.queue }))
+    let status = 0
+    try {
+      status = await sendPush(env, s, JSON.stringify({ s: id, d: daily ? 1 : 0, m: s.queue }))
+    } catch {
+      // Iscrizione guasta (chiavi illeggibili): si toglie.
+      status = 410
+    }
     changed = true
     if (status === 404 || status === 410) {
       // Iscrizione scaduta o notifiche disattivate sul telefono.
       delete subs[h]
+      continue
+    }
+    // Errore momentaneo (rete, troppe richieste, servizio push giù): la coda resta,
+    // si riprova al prossimo giro. Il riepilogo del giorno si ritenta nella stessa ora.
+    if (status === 0 || status === 429 || status >= 500) {
+      if (daily) s.day = undefined
       continue
     }
     s.queue = []
@@ -285,7 +362,7 @@ async function checkAuth(env, id, header, mayCreate) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))
   const hash = [...digest].map((b) => b.toString(16).padStart(2, '0')).join('')
   const stored = await env.KV.get(`a/${id}`)
-  if (stored) return stored === hash
+  if (stored) return stored !== REVOKED && stored === hash
   if (!mayCreate) return false
   await env.KV.put(`a/${id}`, hash)
   return true

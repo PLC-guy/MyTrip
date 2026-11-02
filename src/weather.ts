@@ -23,7 +23,9 @@ function urlFor(stop: Stop): string {
   const day = stop.first.slice(0, 10)
   const ageDays = (Date.now() - Date.parse(day + 'T00:00:00Z')) / 86_400_000
   const base = ageDays > RECENT_DAYS ? ARCHIVE : RECENT
-  return `${base}?latitude=${stop.lat.toFixed(4)}&longitude=${stop.lon.toFixed(4)}&start_date=${day}&end_date=${day}&hourly=temperature_2m,weather_code&timezone=auto`
+  // Posizione arrotondata a ~1 km: la griglia del meteo è di ~10 km, e Open-Meteo
+  // non ha bisogno dell'itinerario esatto (revisione del 1/11/2026).
+  return `${base}?latitude=${stop.lat.toFixed(2)}&longitude=${stop.lon.toFixed(2)}&start_date=${day}&end_date=${day}&hourly=temperature_2m,weather_code&timezone=auto`
 }
 
 export async function weatherPending(): Promise<void> {

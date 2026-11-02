@@ -33,7 +33,7 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
   }, [lat, lon, radius])
   const wider = radius < RADII[1] && (
     <button className="btn ghost small-btn" type="button" onClick={() => { setPlaces(undefined); setError(false); setRadius(RADII[1]) }}>
-      Cerca più lontano (fino a {RADII[1]} m)
+      Cerca fino a {RADII[1]} m
     </button>
   )
 
@@ -46,16 +46,16 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
     <Sheet onClose={onClose}>
       <h2>Dove hai mangiato?</h2>
       {!places && !error && <p className="small">Cerco i locali vicini…</p>}
-      {error && <p className="small">Non riesco a cercare i locali: serve la connessione, oppure il servizio non risponde. Puoi scrivere il nome qui sotto.</p>}
+      {error && <p className="small">Serve la connessione per cercare i locali, oppure il servizio non risponde. Puoi scrivere il nome qui sotto.</p>}
       {places && places.length === 0 && (
         <>
-          <p className="small">OpenStreetMap non conosce locali entro {radius} m. Scrivi il nome qui sotto{radius < RADII[1] ? ', o cerca più lontano' : ''}.</p>
+          <p className="small">Nessun locale sulla mappa entro {radius} m. Scrivi il nome qui sotto{radius < RADII[1] ? ' o cerca più lontano' : ''}.</p>
           {wider}
         </>
       )}
       {places && places.length > 0 && (
         <>
-          <p className="small">{places.length >= 100 ? 'I 100 più vicini' : `${places.length} entro ${radius} m`}, dal più vicino{photo ? ' alla foto' : ''}. Al chiuso il GPS sbaglia di qualche decina di metri: se non sei sicuro, tocca la mappa accanto al nome per controllare.</p>
+          <p className="small">{places.length >= 100 ? 'I 100 locali più vicini' : `${places.length === 1 ? '1 locale' : `${places.length} locali`} entro ${radius} m`}{photo ? ' dalla foto' : ''}, dal più vicino. Al chiuso la posizione può sbagliare di qualche decina di metri. Se non sei sicuro, tocca la mappa accanto al nome.</p>
           <div className="list pick-list" style={{ marginTop: 10 }}>
             {places.map((p) => (
               // Riga = scegli il locale; icona a destra = guardalo prima nelle mappe
@@ -88,7 +88,7 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
           if (name.trim()) save({ name: name.trim(), address: stop.place })
         }}
       >
-        <input className="field" value={name} maxLength={80} placeholder="Non è nell'elenco? Scrivi il nome" onChange={(e) => setName(e.target.value)} />
+        <input className="field" value={name} maxLength={80} aria-label="Nome del locale" placeholder="Non è nell'elenco? Scrivi il nome" onChange={(e) => setName(e.target.value)} />
         <button className="btn" type="submit" disabled={!name.trim()}>
           Salva questo nome
         </button>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, followedTripIds, stopTitle, type Stop, type Trip } from './db'
-import { fmtDay, fmtDayLong } from './format'
+import { fmtDay, fmtDayLong, fmtTime } from './format'
 import { IconBack } from './icons'
 import type { Route } from './App'
 
@@ -42,7 +42,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
         </button>
         <h1>Cerca</h1>
       </div>
-      <input className="field" type="search" autoFocus placeholder="Luogo, locale, paese, nota, diario…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input className="field" type="search" autoFocus aria-label="Cerca" placeholder="Luogo, locale, paese, nota, diario…" value={q} onChange={(e) => setQ(e.target.value)} />
 
       {empty && <p className="small" style={{ marginTop: 16 }}>Nessun risultato per «{q.trim()}».</p>}
 
@@ -73,7 +73,7 @@ export default function SearchScreen({ go }: { go: (r: Route) => void }) {
                   {stopTitle(stop)}
                 </span>
                 <span className="meta" style={{ display: 'block' }}>
-                  {seen(trip)}{trip.name} · {fmtDay(stop.first)}
+                  {seen(trip)}{trip.name} · {fmtDay(stop.first)} · {fmtTime(stop.first)}
                   {stop.country ? ` · ${stop.country}` : ''}
                 </span>
                 {why && <span className="meta" style={{ display: 'block' }}>«{why}»</span>}

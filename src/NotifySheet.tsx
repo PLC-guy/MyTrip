@@ -32,7 +32,7 @@ export default function NotifySheet({ share, onClose, leaving, swap }: { share: 
 
   const options: { key: NotifyMode | 'off'; label: string; hint: string }[] = [
     { key: 'off', label: 'Spente', hint: 'Vedi le novità quando apri l\'app.' },
-    { key: 'each', label: 'A ogni novità', hint: 'Quando arrivano foto nuove; al massimo una notifica ogni 15 minuti.' },
+    { key: 'each', label: 'A ogni novità', hint: 'Quando arrivano foto nuove. Al massimo una notifica ogni 15 minuti.' },
     { key: 'daily', label: 'Una al giorno', hint: 'Un riepilogo all\'ora che scegli, solo nei giorni con foto nuove.' },
   ]
 

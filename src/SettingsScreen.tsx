@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from './db'
-import { exportTrips, importFile } from './backup'
+import { colorName, db } from './db'
+import { applyImport, exportTrips, readImport, type ParsedImport } from './backup'
 import { shareExport } from './exportFlow'
 import Sheet from './Sheet'
 import { backupDue, describeBackupAge, photosToKeep, runBackup, useBackupState } from './backupReminder'
@@ -95,8 +95,9 @@ function SettingsHome({ go }: { go: (r: Route) => void }) {
         <div><span className="k">Tappe</span><b>{counts?.stops ?? '…'}</b></div>
         <div><span className="k">Foto</span><b>{counts?.photos ?? '…'}</b></div>
         <div><span className="k">Spazio occupato</span><b>{storage.usage != null ? fmtBytes(storage.usage) : '—'}</b></div>
-        <div><span className="k">Protetto dalla pulizia automatica</span><b>{storage.persisted == null ? '—' : storage.persisted ? 'sì' : 'no'}</b></div>
+        <div><span className="k">Al sicuro se il telefono libera spazio</span><b>{storage.persisted == null ? '—' : storage.persisted ? 'sì' : 'no'}</b></div>
       </div>
+      {storage.persisted === false && <p className="small">Fai spesso il backup completo.</p>}
       <p className="small">Le foto originali restano nella galleria del telefono, l'app conserva solo le miniature.</p>
 
       <h2 className="section-title">Versione</h2>
@@ -207,7 +208,7 @@ function TravelerPage({ go }: { go: (r: Route) => void }) {
         />
         <button className="btn" type="submit" disabled={!changed}>Salva</button>
       </form>
-      {saved && <p className="small">Salvato.</p>}
+      {saved && <p className="small" role="status">Salvato.</p>}
       <p className="small">
         Chi segue i viaggi che condividi in diretta li vede come «Viaggio di {name.trim() || 'Alex'}». Il nome lascia il telefono solo con i viaggi condivisi, cifrato come il resto del viaggio.
       </p>
@@ -228,7 +229,7 @@ function GroupingPage({ go }: { go: (r: Route) => void }) {
     <div className="page">
       <Bar title="Tappe" back={() => go({ name: 'settings' })} />
       <p className="small">
-        Una foto entra nella stessa tappa delle altre se è stata scattata vicino E poco dopo. Se ti sposti di più, o passa più tempo, comincia una tappa nuova.
+        Una foto entra nella stessa tappa delle altre se è stata scattata vicino e poco dopo. Se ti sposti di più, o passa più tempo, comincia una tappa nuova.
       </p>
       <form
         className="traveler-form"
@@ -242,9 +243,9 @@ function GroupingPage({ go }: { go: (r: Route) => void }) {
           setSaved(true)
         }}
       >
-        <label className="small" htmlFor="grp-radius">Distanza massima dal centro della tappa (metri)</label>
+        <label className="small" htmlFor="grp-radius">Distanza massima dal centro della tappa, in metri</label>
         <input id="grp-radius" className="field" type="number" inputMode="numeric" min={RADIUS_LIMITS.min} max={RADIUS_LIMITS.max} value={radius} onChange={(e) => { setRadius(e.target.value); setSaved(false) }} />
-        <label className="small" htmlFor="grp-gap">Tempo massimo fra una foto e la tappa (minuti)</label>
+        <label className="small" htmlFor="grp-gap">Tempo massimo fra una foto e la tappa, in minuti</label>
         <input id="grp-gap" className="field" type="number" inputMode="numeric" min={GAP_LIMITS.min} max={GAP_LIMITS.max} value={gap} onChange={(e) => { setGap(e.target.value); setSaved(false) }} />
         <button className="btn" type="submit" disabled={!changed || !radius || !gap}>Salva</button>
         {!isDefault && (
@@ -262,7 +263,7 @@ function GroupingPage({ go }: { go: (r: Route) => void }) {
           </button>
         )}
       </form>
-      {saved && <p className="small">Salvato.</p>}
+      {saved && <p className="small" role="status">Salvato.</p>}
       <p className="small">
         Vale per le foto che aggiungi da ora in poi: le tappe già fatte restano come sono. Distanza da {RADIUS_LIMITS.min} a {RADIUS_LIMITS.max} m, tempo da {GAP_LIMITS.min} minuti a 24 ore. Le scelte entrano nel backup completo.
       </p>
@@ -306,7 +307,7 @@ function AppearancePage({ go }: { go: (r: Route) => void }) {
       <h2 className="section-title">Colore dei paesi visitati</h2>
       <div className="swatches">
         {COUNTRY_COLORS.map((c) => (
-          <button key={c} className={`swatch${countryColor.toLowerCase() === c.toLowerCase() ? ' on' : ''}`} style={{ background: c }} aria-label={`Colore ${c}`} onClick={() => setCountryColor(c)} />
+          <button key={c} className={`swatch${countryColor.toLowerCase() === c.toLowerCase() ? ' on' : ''}`} style={{ background: c }} aria-label={colorName(c)} aria-pressed={countryColor.toLowerCase() === c.toLowerCase()} onClick={() => setCountryColor(c)} />
         ))}
         {/* Colore libero: il selettore di sistema dell'iPhone. */}
         <label className={`swatch swatch-custom${COUNTRY_COLORS.some((c) => c.toLowerCase() === countryColor.toLowerCase()) ? '' : ' on'}`} aria-label="Scegli un altro colore">
@@ -324,6 +325,14 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
   const backup = useBackupState()
   const trips = useLiveQuery(() => db.trips.count())
   const [choosing, setChoosing] = useState(false)
+  const [ask, setAsk] = useState<ParsedImport>()
+
+  async function finish(parsed: ParsedImport, withShares: boolean) {
+    const r = await applyImport(parsed, withShares)
+    void geocodePending()
+    void routesPending()
+    return `Hai importato ${r.trips.length > 1 ? `${r.trips.slice(0, -1).join(', ')} e ${r.trips.at(-1)}` : r.trips[0]}. ${plural(r.photos, 'foto', 'foto')} in tutto.`
+  }
 
   async function run(job: () => Promise<string | void>) {
     setWorking(true)
@@ -347,9 +356,10 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
         Ultimo backup completo: <b>{describeBackupAge(backup)}</b>.
         <br />I viaggi esistono solo su questo telefono, ricorda di conservarli.
       </p>
-      <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup esportato con successo!' : undefined))}>
-        Esporta tutti i viaggi
+      <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup fatto.' : undefined))}>
+        Fai il backup completo
       </button>
+      <p className="small">Il backup contiene anche i link dei viaggi che condividi. Tienilo per te.</p>
 
       <h2 className="section-title">Esporta alcuni viaggi</h2>
       <p className="small">Per passare qualche viaggio a qualcuno. Più viaggi finiscono in un unico file, con foto alleggerite per mandarle facilmente.</p>
@@ -368,7 +378,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       )}
 
       {/* Riguarda gli export, quindi sta sopra il ripristino (scelta dell'utente). */}
-      <p className="small">Gli export contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
+      <p className="small">I file contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
 
       <h2 className="section-title">Ripristino</h2>
       <p className="small">Puoi importare un singolo viaggio o un backup completo, anche fatto su un altro telefono. Se un viaggio c'è già, si aggiorna.</p>
@@ -386,15 +396,30 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
             e.target.value = ''
             if (!file) return
             void run(async () => {
-              const r = await importFile(file)
-              void geocodePending()
-              void routesPending()
-              return `Importato: ${r.trips.join(', ')} (${plural(r.photos, 'foto', 'foto')})`
+              const parsed = await readImport(file)
+              // Un backup con condivisioni in diretta: si chiede prima (sicurezza, backup.ts).
+              if (parsed.shareTrips.length) return void setAsk(parsed)
+              return finish(parsed, false)
             })
           }}
         />
       </label>
-      {msg && <div className="note-box" style={{ marginTop: 12 }}>{msg}</div>}
+      {ask && (
+        <div className="note-box warm" style={{ marginTop: 12 }} role="alert">
+          <p style={{ marginTop: 0 }}>
+            Questo backup riprende anche la condivisione in diretta di {ask.shareTrips.map((n) => `«${n}»`).join(', ')}. Riprendila solo se il backup è tuo.
+          </p>
+          <div className="stack">
+            <button className="btn" disabled={working} onClick={() => { const p = ask; setAsk(undefined); void run(() => finish(p, true)) }}>
+              Il backup è mio, riprendi la condivisione
+            </button>
+            <button className="btn ghost" disabled={working} onClick={() => { const p = ask; setAsk(undefined); void run(() => finish(p, false)) }}>
+              Importa senza condivisione
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && <div className="note-box" style={{ marginTop: 12 }} role="status">{msg}</div>}
     </div>
   )
 }

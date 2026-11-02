@@ -61,7 +61,7 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
   const until = addDays(day, nights)
   const wider = radius < SLEEP_RADII[1] && (
     <button className="btn ghost small-btn" type="button" onClick={() => { setPlaces(undefined); setError(false); setRadius(SLEEP_RADII[1]) }}>
-      Cerca più lontano (fino a {SLEEP_RADII[1] / 1000} km)
+      Cerca fino a {SLEEP_RADII[1] / 1000} km
     </button>
   )
 
@@ -78,7 +78,9 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
           <button type="button" className="btn ghost small-btn" disabled={nights >= MAX_NIGHTS} onClick={() => setNights(nights + 1)} aria-label="Una notte in più">+</button>
         </span>
       </div>
-      <p className="small" style={{ marginTop: 4 }}>Ripartenza {fmtDay(until + 'T12:00:00')}: le sere in mezzo si compilano da sole.</p>
+      <p className="small" style={{ marginTop: 4 }}>
+        Riparti {fmtDay(until + 'T12:00:00')}.{nights > 1 ? ' Le sere in mezzo si compilano da sole.' : ''}
+      </p>
 
       {current && (
         <div className="meal-box">
@@ -99,16 +101,16 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
       {searching && (
         <>
           {!places && !error && <p className="small">Cerco gli alloggi vicini all'ultima tappa del giorno…</p>}
-          {error && <p className="small">Non riesco a cercare gli alloggi: serve la connessione, oppure il servizio non risponde. Puoi scrivere il nome qui sotto.</p>}
+          {error && <p className="small">Serve la connessione per cercare gli alloggi, oppure il servizio non risponde. Puoi scrivere il nome qui sotto.</p>}
           {places && places.length === 0 && (
             <>
-              <p className="small">OpenStreetMap non conosce alloggi entro {radius} m. Scrivi il nome qui sotto{radius < SLEEP_RADII[1] ? ', o cerca più lontano' : ''}.</p>
+              <p className="small">Nessun alloggio sulla mappa entro {radius >= 1000 ? `${radius / 1000} km` : `${radius} m`}. Scrivi il nome qui sotto{radius < SLEEP_RADII[1] ? ' o cerca più lontano' : ''}.</p>
               {wider}
             </>
           )}
           {places && places.length > 0 && (
             <>
-              <p className="small">{places.length >= 100 ? 'I 100 più vicini' : `${places.length} entro ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`}`} dall'ultima tappa del giorno. Tocca la mappa accanto al nome per controllare.</p>
+              <p className="small">{places.length >= 100 ? 'I 100 alloggi più vicini' : `${places.length === 1 ? '1 alloggio' : `${places.length} alloggi`} entro ${radius >= 1000 ? `${radius / 1000} km` : `${radius} m`}`} dall'ultima tappa del giorno. Tocca la mappa accanto al nome per controllare.</p>
               <div className="list pick-list" style={{ marginTop: 10 }}>
                 {places.map((p) => (
                   <div key={`${p.name}|${p.lat}|${p.lon}`} className={`meal-row${current?.name === p.name ? ' on' : ''}`}>
@@ -138,7 +140,7 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
               if (name.trim()) pick({ name: name.trim(), lat: last.lat, lon: last.lon, address: last.place, approx: true })
             }}
           >
-            <input className="field" value={name} maxLength={80} placeholder="Non è nell'elenco? Scrivi il nome" onChange={(e) => setName(e.target.value)} />
+            <input className="field" value={name} maxLength={80} aria-label="Nome dell'alloggio" placeholder={places?.length ? "Non è nell'elenco? Scrivi il nome" : "Scrivi il nome dell'alloggio"} onChange={(e) => setName(e.target.value)} />
             <button className="btn" type="submit" disabled={!name.trim()}>
               Salva questo nome
             </button>

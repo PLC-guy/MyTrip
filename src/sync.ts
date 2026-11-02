@@ -71,10 +71,9 @@ export function useSyncStatus(tripId: string): SyncStatus {
 // --- Rete --------------------------------------------------------------------
 
 function explain(status: number): string {
-  if (status === 403) return 'Permesso di scrittura non valido.'
-  if (status === 413) return 'Dati troppo grandi per il server.'
-  if (status === 429 || status >= 500) return 'Il server non risponde ora (forse il limite giornaliero): riprovo più tardi.'
-  return `Errore del server (${status}).`
+  if (status === 403) return 'Questo telefono non può più aggiornare il viaggio. Smetti di condividere e ricomincia.'
+  if (status === 413) return 'Il viaggio è troppo grande per essere condiviso.'
+  return 'Il server non risponde. Riprovo più tardi da solo.'
 }
 
 async function call(method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, share: Share, body?: Uint8Array<ArrayBuffer>, version?: string): Promise<Response | null> {
@@ -90,7 +89,7 @@ async function call(method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, sha
       },
     })
   } catch {
-    throw new Error('Connessione assente o server non raggiungibile.')
+    throw new Error('Serve la connessione. Riprovo appena torna.')
   }
   if (r.status === 404 && method === 'GET') return null
   if (!r.ok) throw new Error(explain(r.status))
@@ -118,7 +117,7 @@ async function getPiece(share: Share, part: string): Promise<ArrayBuffer | null>
   try {
     return await decrypt(share.key, await r.arrayBuffer(), name(share, part))
   } catch {
-    throw new Error('Il link non è corretto: i dati non si decifrano.')
+    throw new Error('Questo link non funziona. Chiedi a chi viaggia di mandartelo di nuovo.')
   }
 }
 
@@ -287,6 +286,10 @@ export async function follow(code: { id: string; key: string }): Promise<string>
   const tripId = index.trip.id
   const existing = await db.shares.get(tripId)
   if (existing?.role === 'owner') throw new Error('Questo viaggio lo stai condividendo tu.')
+  // ⚠️ Un viaggio con lo stesso id già sul telefono e non seguito (per esempio
+  // ricevuto prima come file e poi arricchito): seguirlo lo sovrascriverebbe,
+  // cancellando le aggiunte (revisione del 1/11/2026, S2).
+  if (!existing && (await db.trips.get(tripId))) throw new Error('Questo viaggio è già sul telefono, quindi non si può seguire.')
   await db.shares.put({ ...probe, tripId })
   await pullShare(tripId)
   const share = await db.shares.get(tripId)
@@ -299,11 +302,15 @@ export function pullShare(tripId: string): Promise<void> {
   return single(tripId, () => pullOnce(tripId))
 }
 
-const ENDED = 'Il viaggio non è più condiviso: resta quello che hai già scaricato.'
+const ENDED = 'Il viaggio non è più condiviso, resta quello che hai già scaricato.'
 
 async function pullOnce(tripId: string): Promise<void> {
   const share = await db.shares.get(tripId)
   if (share?.role !== 'follow') return
+  // ⚠️ Non più condiviso = chiuso per sempre. Chi aveva il vecchio link potrebbe
+  // riprendersi lo stesso id sul server e mandare un viaggio falso, o vuoto, che
+  // cancellerebbe la copia rimasta qui (revisione del 1/11/2026, S9).
+  if (share.ended) return
   // Chi viaggia ha smesso di condividere: da qui il viaggio vive solo su questo telefono.
   const ended = () => db.shares.update(tripId, { ended: share.ended ?? Date.now(), error: ENDED })
   try {
@@ -311,13 +318,23 @@ async function pullOnce(tripId: string): Promise<void> {
     if (!r) return void (await ended())
     const v = await r.text()
     if (v === share.v) {
-      if (share.error || share.ended) await db.shares.update(tripId, { error: undefined, ended: undefined })
+      if (share.error) await db.shares.update(tripId, { error: undefined })
       return
     }
     setStatus(tripId, { busy: true })
     const index = await getIndex(share)
     if (!index) return void (await ended())
     if (index.trip.id !== tripId) throw new Error('Il link non corrisponde a questo viaggio.')
+    // ⚠️ Ogni scheda dell'indice deve essere di QUESTO viaggio, e non può prendere
+    // il posto di una scheda di un altro viaggio del telefono (revisione, S2).
+    const foreign = async (table: 'stops' | 'photos' | 'routes', ids: string[]) =>
+      new Set((await db[table].bulkGet(ids)).flatMap((x) => (x && x.tripId !== tripId ? [x.id] : [])))
+    const badStops = await foreign('stops', index.stops.map((s) => s.id))
+    const badPhotos = await foreign('photos', index.photos.map((p) => p.id))
+    const badRoutes = await foreign('routes', index.routes.map((r) => r.id))
+    index.stops = index.stops.filter((s) => !badStops.has(s.id)).map((s) => ({ ...s, tripId }))
+    index.photos = index.photos.filter((p) => !badPhotos.has(p.id)).map((p) => ({ ...p, tripId }))
+    index.routes = index.routes.filter((r) => !badRoutes.has(r.id)).map((r) => ({ ...r, tripId }))
 
     // Prima la struttura (tappe, percorsi), così il viaggio si vede subito;
     // poi le miniature mancanti, a gruppi.
@@ -411,6 +428,7 @@ export async function setNotify(tripId: string, pref: { mode: NotifyMode; hour: 
   const permission = pref ? Notification.requestPermission() : undefined
   const share = await db.shares.get(tripId)
   if (share?.role !== 'follow') return
+  if (pref && share.ended) throw new Error(ENDED)
   if (!pref) {
     if (share.notify) await call('DELETE', `/sub/${share.notify.sub}`, share)
     await db.shares.update(tripId, { notify: undefined })
@@ -463,7 +481,7 @@ export async function pushAll(): Promise<void> {
 }
 
 export async function pullAll(): Promise<void> {
-  for (const s of await db.shares.where('role').equals('follow').toArray()) await pullShare(s.tripId)
+  for (const s of await db.shares.where('role').equals('follow').toArray()) if (!s.ended) await pullShare(s.tripId)
 }
 
 let started = false

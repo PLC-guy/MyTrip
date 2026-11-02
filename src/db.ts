@@ -253,6 +253,20 @@ db.version(3).stores({
 /** Colori dei viaggi, a rotazione: la palette del sito di Greta (tè, blu, laterite, zafferano…). */
 export const TRIP_COLORS = ['#2F6B4F', '#1F4E8C', '#A3432A', '#C98A1B', '#6B4F8C', '#2F8C86', '#8C5A2F']
 
+/** Nomi dei colori, per VoiceOver (accessibilità): «Colore #2f6b4f» non diceva niente. */
+const COLOR_NAMES: Record<string, string> = {
+  '#2f6b4f': 'Verde tè',
+  '#1f4e8c': 'Blu',
+  '#a3432a': 'Laterite',
+  '#c98a1b': 'Ocra',
+  '#e3a02b': 'Zafferano',
+  '#6b4f8c': 'Viola',
+  '#2f8c86': 'Verde acqua',
+  '#8c5a2f': 'Marrone',
+  '#1c2b24': 'Inchiostro',
+}
+export const colorName = (hex: string) => COLOR_NAMES[hex.toLowerCase()] ?? 'Colore'
+
 /**
  * Vecchia palette (fino alla 0.4.1) → nuova, alla stessa posizione. I viaggi
  * creati prima si ricolorano una volta all'avvio (`recolorTrips`).

@@ -172,6 +172,8 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
   const info: LegInfo = { ...base, km: r.km ?? straightKm, minutes: r.minutes, straight: !!to.straight, points: to.straight ? base.points : route }
   // Un traghetto trovato dal percorso dice più dell'auto dedotta.
   if (inferred && r.ferry && mode === 'car') Object.assign(info, { icon: '⛴️', label: 'Traghetto' })
+  // A piedi con un traghetto in mezzo (Venezia): i tempi altrimenti sembrerebbero sbagliati (revisione, U9).
+  if (inferred && r.ferry && mode === 'walk') Object.assign(info, { icon: '🚶⛴️', label: 'A piedi e traghetto' })
 
   // In auto, il tempo di guida stimato deve stare nel tempo passato fra le foto
   // E in una giornata umana: al massimo MAX_DRIVE_H ogni 24 ore. Senza il
@@ -182,7 +184,7 @@ export function legInfo(from: LegStop, to: LegStop, routes: Map<string, Route>):
     const days = Math.max(1, Math.ceil(gapMin / (24 * 60)))
     const tooFast = r.minutes - TIME_MARGIN_MIN > gapMin
     const tooLong = r.minutes > days * MAX_DRIVE_H * 60
-    if (tooFast) info.warning = `In auto servono circa ${fmtDuration(r.minutes)}, tra le foto ne sono passati ${fmtDuration(gapMin)}: forse aereo o treno?`
+    if (tooFast) info.warning = `In auto servono circa ${fmtDuration(r.minutes)}, ma le due foto sono a ${fmtDuration(gapMin)} di distanza. Forse aereo o treno?`
     else if (tooLong) info.warning = `Sarebbero circa ${fmtDuration(r.minutes)} di guida in ${days === 1 ? 'un giorno' : `${days} giorni`}: forse aereo o treno?`
   }
   return info

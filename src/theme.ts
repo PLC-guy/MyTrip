@@ -37,7 +37,7 @@ export const THEMES: Theme[] = [
   {
     id: 'moderno',
     name: 'Nebbia e indaco',
-    description: 'Moderno: grigi freddi, indaco, titoli senza grazie.',
+    description: 'Moderno, con grigi freddi, indaco e titoli semplici.',
     preview: { bg: '#f3f4f7', card: '#e4e7ef', accent: '#4338ca', blue: '#0e7490', saff: '#f59e0b' },
   },
 ]

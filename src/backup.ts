@@ -160,11 +160,31 @@ export interface ImportSummary {
   photos: number
 }
 
+/** Un file letto, pronto da importare (`readImport` → `applyImport`). */
+export interface ParsedImport {
+  data: ExportFile
+  /**
+   * Viaggi del file che riprenderebbero una condivisione in diretta (solo backup
+   * completi). ⚠️ Si importano SOLO se chi importa lo conferma (`withShares`).
+   */
+  shareTrips: string[]
+}
+
 /**
- * Importa un viaggio o un backup. Gli id sono gli stessi dell'esportazione:
- * ciò che esiste già si aggiorna, il resto si aggiunge. Niente si cancella.
+ * ⚠️ SICUREZZA DELL'IMPORT (revisione del 1/11/2026, S1 e S2)
+ *
+ * Un file ricevuto può essere costruito apposta. Senza controlli:
+ * - un «backup» con `shares` scelti da altri farebbe partire in silenzio una
+ *   condivisione in diretta di un viaggio del telefono verso chi ha mandato il
+ *   file, o lo farebbe «seguire» sovrascrivendolo;
+ * - tappe, foto o percorsi con gli id di ALTRI viaggi del telefono (presi da un
+ *   file esportato) li sovrascriverebbero.
+ * Quindi: le condivisioni si riprendono solo con una conferma esplicita, mai su
+ * un viaggio che sul telefono esiste già, e mai al posto di una condivisione
+ * che c'è già; ogni scheda deve appartenere a un viaggio del file e non può
+ * prendere il posto di una scheda di un altro viaggio.
  */
-export async function importFile(file: File): Promise<ImportSummary> {
+export async function readImport(file: File): Promise<ParsedImport> {
   let data: ExportFile
   try {
     data = JSON.parse(await unpack(file)) as ExportFile
@@ -176,6 +196,36 @@ export async function importFile(file: File): Promise<ImportSummary> {
   }
   if (typeof data.format !== 'number' || data.format > FORMAT) {
     throw new Error("Il file viene da una versione più recente dell'app: aggiornala e riprova.")
+  }
+  const names = new Map(data.trips.map((t) => [t.id, t.name]))
+  const shareTrips = data.kind === 'backup' && Array.isArray(data.shares) ? data.shares.map((s) => names.get(s.tripId)).filter((n): n is string => !!n) : []
+  return { data, shareTrips }
+}
+
+/** Legge e importa, senza riprendere le condivisioni. */
+export async function importFile(file: File): Promise<ImportSummary> {
+  return applyImport(await readImport(file), false)
+}
+
+/**
+ * Importa un viaggio o un backup. Gli id sono gli stessi dell'esportazione:
+ * ciò che esiste già si aggiorna, il resto si aggiunge. Niente si cancella.
+ */
+export async function applyImport({ data }: ParsedImport, withShares: boolean): Promise<ImportSummary> {
+  // Ogni scheda deve stare in un viaggio del file, e non può prendere il posto
+  // di una scheda che sul telefono appartiene a un altro viaggio.
+  const fileTrips = new Set(data.trips.map((t) => t.id))
+  const owners = async (table: 'stops' | 'photos' | 'routes', ids: string[]) =>
+    new Map((await db[table].bulkGet(ids)).flatMap((x) => (x ? [[x.id, x.tripId] as const] : [])))
+  const stopOwner = await owners('stops', data.stops.map((s) => s.id))
+  const photoOwner = await owners('photos', data.photos.map((p) => p.id))
+  const routeOwner = await owners('routes', (data.routes ?? []).map((r) => r.id))
+  const fits = (x: { id: string; tripId: string }, owner: Map<string, string>) => fileTrips.has(x.tripId) && (owner.get(x.id) ?? x.tripId) === x.tripId
+  data = {
+    ...data,
+    stops: data.stops.filter((s) => fits(s, stopOwner)),
+    photos: data.photos.filter((p) => fits(p, photoOwner)),
+    routes: data.routes?.filter((r) => fits(r, routeOwner)),
   }
 
   const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToStored(p.thumb) }))
@@ -199,7 +249,13 @@ export async function importFile(file: File): Promise<ImportSummary> {
   // ma arriverebbero al vecchio indirizzo. Si tiene solo se è la stessa di
   // questo telefono; altrimenti risultano spente e si riattivano con un tocco.
   const mine = data.shares?.some((s) => s.notify) ? await currentPushSub() : undefined
-  const shares = (data.shares ?? []).map((s) => (s.notify && s.notify.sub !== mine ? { ...s, notify: undefined } : s))
+  // Condivisioni: solo con la conferma, solo per viaggi che sul telefono non ci
+  // sono ancora (il ripristino su un telefono nuovo), mai al posto di una che c'è.
+  const already = new Set((await db.trips.bulkGet(data.trips.map((t) => t.id))).flatMap((t) => (t ? [t.id] : [])))
+  const taken = new Set((await db.shares.toArray()).map((s) => s.tripId))
+  const shares = (withShares && data.kind === 'backup' ? (data.shares ?? []) : [])
+    .filter((s) => fileTrips.has(s.tripId) && !already.has(s.tripId) && !taken.has(s.tripId))
+    .map((s) => (s.notify && s.notify.sub !== mine ? { ...s, notify: undefined } : s))
 
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
   // indirizzi in memoria puntano alle immagini di prima.
@@ -207,7 +263,7 @@ export async function importFile(file: File): Promise<ImportSummary> {
 
   await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
     await db.trips.bulkPut(trips)
-    if (data.kind === 'backup' && Array.isArray(data.shares)) await db.shares.bulkPut(shares)
+    if (shares.length) await db.shares.bulkAdd(shares)
     if (data.kind === 'backup' && data.grouping) setGrouping(cleanGrouping(data.grouping))
     await db.stops.bulkPut(data.stops)
     await db.photos.bulkPut(photos)

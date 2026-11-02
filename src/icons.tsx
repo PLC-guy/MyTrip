@@ -7,6 +7,8 @@ const Svg = ({ children }: { children: ReactNode }) => (
 )
 
 export const IconBack = () => <Svg><path d="M15 18l-6-6 6-6" /></Svg>
+/** Freccia delle sezioni che si aprono e chiudono: in giù = aperta, ruota a destra quando è chiusa. */
+export const IconChevron = () => <Svg><path d="M6 9l6 6 6-6" /></Svg>
 export const IconPlus = () => <Svg><path d="M12 5v14M5 12h14" /></Svg>
 export const IconGear = () => (
   <Svg>

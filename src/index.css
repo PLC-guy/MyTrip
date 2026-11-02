@@ -20,6 +20,7 @@
   --accent: #2f6b4f; /* verde tè */
   --blue: #1f4e8c;
   --saff: #e3a02b; /* zafferano */
+  --star: #9a6a00; /* stelle accese: zafferano scuro, almeno 3:1 sul fondo (accessibilità) */
   --lat: #a3432a; /* laterite */
   --map-bg: #e4e8dc;
   --danger: #a3432a;
@@ -41,9 +42,10 @@
   --ink: #33221a;
   --muted: #6a5548;
   --line: #dfcdb8;
-  --accent: #b0532c;
+  --accent: #9e4724; /* più scuro di #b0532c: i testi piccoli arrivano a 4,5:1 (accessibilità) */
   --blue: #2a6987;
   --saff: #d9962b;
+  --star: #8f5c08;
   --lat: #a02f2b;
   --map-bg: #efe3d2;
   --danger: #a02f2b;
@@ -64,6 +66,7 @@
   --accent: #4338ca;
   --blue: #0e7490;
   --saff: #f59e0b;
+  --star: #a15c00;
   --lat: #c62828;
   --map-bg: #e7e9ee;
   --danger: #c62828;
@@ -114,7 +117,7 @@ img { display: block; }
 .page > .bar:not(:has(> .brand)) h1 { font-size: 1.55rem; }
 .subtitle { margin: -4px 0 16px; color: var(--muted); }
 .icon-btn {
-  width: 42px; height: 42px; flex: none; display: grid; place-items: center;
+  width: 44px; height: 44px; flex: none; display: grid; place-items: center;
   border: 1.5px solid var(--ink); border-radius: 50%; background: transparent; color: var(--ink);
 }
 .icon-btn svg { width: 20px; height: 20px; }
@@ -182,7 +185,7 @@ img { display: block; }
   overflow-x: auto; scrollbar-width: none; scroll-padding-inline: var(--gutter-l) var(--gutter-r);
 }
 .shortcuts::-webkit-scrollbar { display: none; }
-.shortcuts button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
+.shortcuts button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
 .shortcuts svg { width: 17px; height: 17px; }
 
 /* --- Schede (viaggi, tappe, numeri) --- */
@@ -237,7 +240,7 @@ img { display: block; }
 .stop .note { display: block; margin-top: 6px; color: var(--muted); font-size: 0.92rem; }
 .stop .strip { display: flex; gap: 5px; margin-top: 10px; }
 .stop .strip img { width: 46px; height: 46px; border-radius: 4px; object-fit: cover; background: var(--line); }
-.star { color: var(--saff); }
+.star { color: var(--star); }
 .stop.compact { display: flex; gap: 12px; align-items: center; }
 .stop .thumb { width: 56px; height: 56px; border-radius: 4px; object-fit: cover; flex: none; background: var(--line); }
 .stop .body { flex: 1; min-width: 0; }
@@ -258,7 +261,7 @@ img { display: block; }
 .transport-grid button.on { box-shadow: inset 0 0 0 2px var(--accent); }
 
 /* Diario del giorno */
-.diary { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 0 0 10px; }
+.diary { display: block; width: 100%; min-height: 44px; text-align: left; border: 0; background: none; padding: 0 0 10px; }
 .diary-text { display: block; white-space: pre-wrap; font: var(--display-weight) 1rem/1.5 var(--display); color: var(--ink); }
 .diary-add { font-size: 0.88rem; color: var(--muted); text-decoration: underline dotted; }
 .diary-field { min-height: 40dvh; }
@@ -302,7 +305,7 @@ img { display: block; }
 @keyframes rise-full { from { transform: translateY(100%); } }
 @keyframes fade { from { opacity: 0; } }
 
-.field { width: 100%; padding: 13px 14px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--paper); outline: none; }
+.field { width: 100%; padding: 13px 14px; border: 1.5px solid color-mix(in srgb, var(--ink) 55%, var(--paper)); border-radius: var(--radius); background: var(--paper); outline: none; }
 .field:focus { border-color: var(--accent); }
 textarea.field { min-height: 84px; resize: vertical; }
 
@@ -327,8 +330,8 @@ textarea.field { min-height: 84px; resize: vertical; }
 .shot .cap button { border: 0; background: none; color: var(--muted); padding: 4px; }
 .shot .cap svg { width: 18px; height: 18px; }
 .edit-hint { font: 400 0.9rem var(--body); color: var(--muted); }
-.star-btn { border: 0; background: none; font-size: 1.7rem; line-height: 1; padding: 4px; color: var(--muted); }
-.star-btn.on { color: var(--saff); }
+.star-btn { min-width: 44px; min-height: 44px; border: 0; background: none; font-size: 1.7rem; line-height: 1; padding: 4px; color: var(--muted); }
+.star-btn.on { color: var(--star); }
 
 /* --- Scelta della copertina --- */
 .cover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
@@ -338,7 +341,7 @@ textarea.field { min-height: 84px; resize: vertical; }
 
 /* --- Scelta a pillole (filtri della pagina Paesi) --- */
 .segmented { display: flex; gap: 6px; margin-bottom: 12px; }
-.segmented button { flex: 1; min-height: 40px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; }
+.segmented button { flex: 1; min-height: 44px; border: 1.5px solid var(--ink); border-radius: 999px; background: transparent; font-size: 0.9rem; font-weight: 700; }
 .segmented button.on { background: var(--ink); color: var(--bg); }
 
 /* --- Colori (Impostazioni › Aspetto) --- */
@@ -453,7 +456,7 @@ textarea.field { min-height: 84px; resize: vertical; }
 .segmented.day-filter button { flex: none; min-width: 52px; }
 
 /* ---- «Ho mangiato qui» (StopSheet, MealSheet). */
-.shot .cap .meal-icon { font-size: 1rem; line-height: 1; filter: grayscale(1); opacity: 0.6; }
+.shot .cap .meal-icon { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; margin: -10px -10px -10px 0; font-size: 1rem; line-height: 1; filter: grayscale(1); opacity: 0.6; }
 .shot .cap .meal-icon.on { filter: none; opacity: 1; }
 .meal-hint { margin: 12px 0 0; }
 .meal-box { margin-top: 14px; padding: 12px 14px; border-radius: var(--radius); background: var(--card); }
@@ -463,10 +466,10 @@ textarea.field { min-height: 84px; resize: vertical; }
 .meal-head .k { font-size: 0.86rem; color: var(--muted); }
 .rating { display: flex; align-items: center; gap: 2px; margin-top: 8px; }
 .rating > button[role='radio'] { border: 0; background: none; padding: 2px 3px; font-size: 1.5rem; line-height: 1; color: color-mix(in srgb, var(--ink) 20%, transparent); }
-.rating > button.on { color: var(--saff); }
-.small-link { border: 0; background: none; padding: 4px 0; color: var(--accent); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
+.rating > button.on { color: var(--star); }
+.small-link { display: inline-flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 4px 0; color: var(--accent); font-weight: 700; font-size: 0.9rem; text-decoration: underline; }
 .stop .meal-line { color: var(--ink); font-weight: 700; }
-.meal-stars { color: var(--saff); letter-spacing: 1px; }
+.meal-stars { color: var(--star); letter-spacing: 1px; }
 .meal-country { margin-bottom: 12px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink) 50%), linear-gradient(135deg, var(--ink) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 36px; }
 
 /* ---- Navigazione per giorni nella pagina del viaggio (DayNav.tsx): discreta, in basso a destra. */
@@ -477,7 +480,7 @@ textarea.field { min-height: 84px; resize: vertical; }
   opacity: 0; transform: translateY(12px); pointer-events: none; transition: opacity 0.2s, transform 0.2s;
 }
 .day-nav.on { opacity: 1; transform: none; pointer-events: auto; }
-.day-nav button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--card); color: var(--ink); }
+.day-nav button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--card); color: var(--ink); }
 .day-nav button:disabled { opacity: 0.35; }
 .day-nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -525,8 +528,16 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 @media (prefers-reduced-motion: reduce) { .leg.flash .leg-label { animation: none; } }
 
 /* Titoli delle sezioni della Home che si chiudono e si riaprono con un tocco. */
-.section-toggle { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
-.section-toggle .chev { width: 1em; font-size: 1rem; color: var(--muted); }
+/* Titoli delle sezioni che si chiudono (Home, numeri del viaggio). La freccia è
+   in un tondo da 32 px, in giù quando la sezione è aperta e a destra quando è
+   chiusa, come le sezioni che si aprono su iPhone; tutto il titolo si tocca
+   (almeno 44 punti di altezza). Prima era un ▾ di 16 px grigio, poco visibile
+   (osservazione dell'utente, 2/11/2026). */
+.section-toggle { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
+.section-toggle .chev { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--card); color: var(--ink); transition: transform 0.2s ease; }
+.section-toggle .chev svg { width: 20px; height: 20px; stroke-width: 2.5; }
+.section-toggle .chev.closed { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .section-toggle .chev { transition: none; } }
 .live-badge.news { background: var(--blue); }
 
 /* QR code per seguire un viaggio (Qr.tsx). */
@@ -543,3 +554,22 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 .stepper { display: inline-flex; align-items: center; gap: 12px; }
 .stepper .btn { width: 44px; min-height: 40px; padding: 0; font-size: 1.2rem; }
 .stepper b { min-width: 2ch; text-align: center; font-size: 1.15rem; }
+
+/* Revisione del 1/11/2026 */
+.btn.ghost.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink); }
+.day-nav-room { height: 64px; }
+
+/* Accessibilità (revisione del 1/11/2026) */
+.leg { min-height: 44px; }
+/* «Riduci movimento»: anche i fogli compaiono senza salire. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet.swap, .sheet.leaving, .sheet-backdrop { animation: none; }
+}
+.sheet:focus { outline: none; }
+.note-button { display: block; width: 100%; border: 0; text-align: left; color: var(--ink); font: inherit; }
+button.map-caption { border: 0; text-align: left; font: inherit; color: inherit; }
+.backup-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 4px 0 10px; padding: 0 12px; border-radius: var(--radius); background: var(--warm); font-size: 0.9rem; }
+.backup-line > span { flex: 1 1 auto; font-weight: 700; }
+.small-link.muted { color: var(--muted); }
+.stats-toggle { margin-top: 28px; }
+.stats-toggle .section-title { margin: 0; }

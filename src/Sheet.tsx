@@ -182,9 +182,35 @@ export default function Sheet({ children, onClose, locked, leaving, swap }: { ch
     }
   }, [])
 
+  /**
+   * Accessibilità (revisione del 1/11/2026, A4): il foglio prende il nome dal suo
+   * titolo, il fuoco ci entra all'apertura e torna dov'era alla chiusura, Esc
+   * chiude (salvo `locked`). Così VoiceOver non resta «dietro» al foglio.
+   */
+  useEffect(() => {
+    const el = sheet.current
+    if (!el) return
+    const before = document.activeElement as HTMLElement | null
+    const title = el.querySelector('h2')
+    if (title) {
+      title.id ||= `foglio-${Math.random().toString(36).slice(2, 8)}`
+      el.setAttribute('aria-labelledby', title.id)
+    }
+    // Il fuoco nel foglio, senza scorrere e senza aprire la tastiera.
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true })
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !lockedRef.current) closeRef.current()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (before?.isConnected) before.focus({ preventScroll: true })
+    }
+  }, [])
+
   return (
     <div ref={backdrop} className={`sheet-backdrop${fadeIn ? '' : ' still'}`} onClick={() => !locked && !leaving && onClose()}>
-      <div ref={sheet} className={`sheet${swap ? ' swap' : ''}${leaving ? ' leaving' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div ref={sheet} className={`sheet${swap ? ' swap' : ''}${leaving ? ' leaving' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabIndex={-1}>
         <div className="grab" />
         {children}
       </div>

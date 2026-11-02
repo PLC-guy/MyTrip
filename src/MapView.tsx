@@ -419,20 +419,18 @@ function pinsGeoJson(m: maplibregl.Map, pins: MapPin[], focusId?: string): Featu
 async function addCountries(m: maplibregl.Map, countries: { codes: string[]; color: string }) {
   const res = await fetch(`${import.meta.env.BASE_URL}countries.json`)
   if (!res.ok || !m.getStyle()) return
-  const data = (await res.json()) as FeatureCollection
+  const all = (await res.json()) as FeatureCollection
+  // Solo i paesi visitati nella sorgente: più leggera di tutti i 239 confini.
+  const codes = new Set(countries.codes)
+  const data: FeatureCollection = { type: 'FeatureCollection', features: all.features.filter((f) => codes.has(f.properties?.iso)) }
   m.addSource('countries', { type: 'geojson', data })
   // Sotto le etichette, così i nomi restano leggibili.
   const firstLabel = m.getStyle().layers?.find((l) => l.type === 'symbol')?.id
-  m.addLayer(
-    {
-      id: 'visited',
-      type: 'fill',
-      source: 'countries',
-      filter: ['in', ['get', 'iso'], ['literal', countries.codes]],
-      paint: { 'fill-color': countries.color, 'fill-opacity': 0.6 },
-    },
-    firstLabel,
-  )
+  // ⚠️ Sulla mappa del mondo un paese è pochi pixel: col solo riempimento
+  // trasparente (0,6) i paesi visitati non si vedevano (revisione del 1/11/2026,
+  // U1). Riempimento più deciso e contorno dello stesso colore.
+  m.addLayer({ id: 'visited', type: 'fill', source: 'countries', paint: { 'fill-color': countries.color, 'fill-opacity': 0.75 } }, firstLabel)
+  m.addLayer({ id: 'visited-edge', type: 'line', source: 'countries', paint: { 'line-color': countries.color, 'line-width': 1.5 } }, firstLabel)
 }
 
 function toGeoJson(lines: MapLine[]): FeatureCollection {

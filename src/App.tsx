@@ -146,12 +146,13 @@ export default function App() {
       {updateReady && (
         <div className="banner">
           <button className="btn" onClick={() => void applyUpdate()}>
-            Nuova versione pronta · tocca per aggiornare
+            Aggiorna l'app, c'è una versione nuova
           </button>
         </div>
       )}
       {/* La chiave la ricrea a ogni schermata: cambiando pagina si riparte puliti. */}
       <ErrorBoundary key={screenKey}>
+        <main>
         {route.name === 'home' && <HomeScreen go={go} />}
         {route.name === 'follow' && <HomeScreen go={go} follow={route.code} />}
         {route.name === 'trip' && <TripScreen key={route.id} id={route.id} initialStop={route.stop} go={go} />}
@@ -160,6 +161,7 @@ export default function App() {
         {route.name === 'meals' && <MealsScreen go={go} />}
         {route.name === 'search' && <SearchScreen go={go} />}
         {route.name === 'countries' && <CountriesScreen go={go} />}
+        </main>
       </ErrorBoundary>
     </>
   )

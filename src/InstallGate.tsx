@@ -150,7 +150,7 @@ function FollowHint() {
   if (!location.hash.startsWith('#/segui/')) return null
   return (
     <div className="note-box" style={{ textAlign: 'left', margin: '12px 0' }}>
-      <b>Hai ricevuto un viaggio da seguire.</b> Installa MyTrip (o aprila, se ce l'hai già), copia il link e incollalo nella Home in «Segui il viaggio di qualcuno» (se hai già dei viaggi: «Nuovo viaggio» › «Segui un viaggio»).
+      <b>Hai ricevuto un viaggio da seguire.</b> Installa MyTrip, o aprila se ce l'hai già. Copia il link e incollalo in «Segui un viaggio», che trovi nella Home o dentro «Nuovo viaggio».
       <button
         className="btn"
         style={{ marginTop: 10 }}

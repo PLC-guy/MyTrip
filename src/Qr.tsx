@@ -75,7 +75,7 @@ export function QrScanner({ onCode }: { onCode: (text: string) => void }) {
         const name = e instanceof DOMException ? e.name : ''
         setError(
           name === 'NotAllowedError'
-            ? "Fotocamera non permessa. Si attiva nelle Impostazioni dell'iPhone › MyTrip (o Safari) › Fotocamera."
+            ? "Per inquadrare il QR code serve la fotocamera. Attivala in Impostazioni › MyTrip › Fotocamera."
             : name === 'NotFoundError'
               ? 'Nessuna fotocamera trovata su questo dispositivo.'
               : 'Non riesco ad aprire la fotocamera.',

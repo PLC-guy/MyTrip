@@ -25,7 +25,10 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
     setWorking(true)
     setError(undefined)
     try {
-      onFollowed(await follow(code))
+      const tripId = await follow(code)
+      // Il link con la chiave non resta nella cronologia del browser (revisione, S8).
+      history.replaceState(null, '', `${location.pathname}${location.search}#/`)
+      onFollowed(tripId)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -38,7 +41,7 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
       <h2>Segui un viaggio</h2>
       <p className="small">Incolla il link che hai ricevuto. Vedrai il viaggio e le foto nuove man mano che arrivano, potrai solo guardare.</p>
       <div className="stack">
-        <textarea className="field" placeholder="https://…#/segui/…" value={text} onChange={(e) => setText(e.target.value)} disabled={working} />
+        <textarea className="field" aria-label="Link del viaggio" placeholder="https://…#/segui/…" value={text} onChange={(e) => setText(e.target.value)} disabled={working} />
         {!text && navigator.clipboard?.readText && (
           <button className="btn ghost" onClick={() => void navigator.clipboard.readText().then(setText, () => {})}>
             Incolla

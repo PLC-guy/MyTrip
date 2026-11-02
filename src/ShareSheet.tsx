@@ -120,7 +120,7 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
           ) : (
             <div className="stack">
               <p className="small" style={{ margin: 0 }}>
-                Il viaggio si cancella dal server e chi lo segue non riceve più novità (tiene ciò che ha già visto). Sul tuo telefono non cambia niente.
+                Il viaggio si cancella dal server e chi lo segue non riceve più novità, ma tiene ciò che ha già visto. Sul tuo telefono non cambia niente.
               </p>
               <button className="btn danger" disabled={working} onClick={() => void run(async () => { await stopSharing(trip.id); onClose() })}>
                 Smetti di condividere
@@ -130,7 +130,7 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
           )}
         </>
       )}
-      {msg && <p className="small">{msg}</p>}
+      {msg && <p className="small" role="status">{msg}</p>}
     </Sheet>
   )
 }

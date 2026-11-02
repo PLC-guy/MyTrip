@@ -112,7 +112,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
       <div className="gallery">
         {photos.map((p, i) => (
           <figure key={p.id} className="shot" style={{ margin: 0, ['--r' as string]: p.width / p.height }}>
-            <img src={thumbUrl(p)} alt="" />
+            <img src={thumbUrl(p)} alt={`Foto delle ${fmtTime(p.taken)}`} />
             <figcaption className="cap">
               <span>
                 {fmtTime(p.taken)}
@@ -184,7 +184,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
         {readOnly ? (
           stop.note && <p className="note-box" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{stop.note}</p>
         ) : (
-          <textarea className="field" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
+          <textarea className="field" aria-label="Nota" placeholder="Una nota su questo posto…" value={note} onChange={(e) => setNote(e.target.value)} onBlur={saveNote} />
         )}
         <div className="row">
           {/* Chi segue non condivide le tappe di un viaggio altrui (richiesta dell'utente, 30/10/2026). */}
@@ -203,7 +203,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
             <IconMap /> Apri in mappe
           </button>
         </div>
-        {msg && <p className="small">{msg}</p>}
+        {msg && <p className="small" role="status">{msg}</p>}
         {!readOnly && (
           <button className={`btn ${editing ? '' : 'ghost '}small-btn`} onClick={() => setEditing(!editing)}>
             {editing ? 'Fine modifica' : '✎ Modifica tappa'}
@@ -229,7 +229,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
           </div>
         )}
         <p className="small">
-          {plural(photos.length, 'foto', 'foto')} · {stop.lat.toFixed(5)}, {stop.lon.toFixed(5)}
+          {plural(photos.length, 'foto', 'foto')}
         </p>
       </div>
 
@@ -250,7 +250,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
                 if (last) onClose()
               }}
             >
-              Togli
+              Togli la foto
             </button>
             <button className="btn ghost" onClick={() => setAsk(undefined)}>Annulla</button>
           </div>
@@ -276,7 +276,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
                 if (id) onOpen(id)
               }}
             >
-              Dividi
+              Dividi la tappa
             </button>
             <button className="btn ghost" onClick={() => setAsk(undefined)}>Annulla</button>
           </div>
@@ -301,7 +301,7 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
                 onOpen(ask.other.id)
               }}
             >
-              Unisci
+              Unisci le tappe
             </button>
             <button className="btn ghost" onClick={() => setAsk(undefined)}>Annulla</button>
           </div>

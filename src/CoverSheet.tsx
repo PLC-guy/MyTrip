@@ -56,8 +56,9 @@ export default function CoverSheet({ trip, onClose, leaving, swap }: { trip: Tri
           <IconPhotos /> {working ? 'Preparo la copertina…' : 'Scegli dalla galleria'}
           <input className="hidden-input" type="file" accept="image/*" disabled={working} onChange={(e) => void upload(e.target.files?.[0])} />
         </label>
-        <button className="btn ghost" onClick={() => void pick(undefined)} disabled={!current}>
-          Automatica (la prima foto del viaggio)
+        {/* Scelta attuale: si vede accesa, non spenta (revisione, U5). */}
+        <button className={`btn ghost${current ? '' : ' on'}`} aria-pressed={!current} onClick={() => current && void pick(undefined)}>
+          {current ? '' : '✓ '}Usa la prima foto del viaggio
         </button>
         {error && <div className="note-box warm">{error}</div>}
       </div>

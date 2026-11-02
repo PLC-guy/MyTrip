@@ -12,3 +12,10 @@ id = "5de50cb092264124a1fbc06864d9ab74"
 # Ogni 15 minuti: riepiloghi giornalieri delle notifiche e novità in attesa (worker.js, `scheduled`).
 [triggers]
 crons = ["*/15 * * * *"]
+
+# Limite di richieste per indirizzo IP (worker.js, `tooMany`): filtro largo contro
+# chi riempie KV con scritture inventate. Contatori per sede di Cloudflare.
+[[ratelimits]]
+name = "RL"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }

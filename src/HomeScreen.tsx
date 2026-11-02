@@ -6,7 +6,7 @@ import { legsToLines } from './legs'
 import { useLegs } from './useLegs'
 import KindPicker from './KindPicker'
 import { daySpan, fmtRange, fmtStamp, plural } from './format'
-import { IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
+import { IconChevron, IconGear, IconGlobe, IconPhotos, IconPlus, IconSearch, IconStar } from './icons'
 import MapView, { type MapLine, type MapPin } from './MapView'
 import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
@@ -116,7 +116,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   // nuove nelle ultime 48 ore, anche se scattate tempo fa (un viaggio vecchio
   // condiviso adesso). I seguiti vanno in ordine di novità.
   const live = (r: TripRow) => r.stops.length > 0 && Date.now() - r.stops[r.stops.length - 1].end < LIVE_MS
-  const fresh = (r: TripRow) => r.share?.news != null && Date.now() - r.share.news < LIVE_MS
+  const fresh = (r: TripRow) => !r.share?.ended && r.share?.news != null && Date.now() - r.share.news < LIVE_MS
   const followed = useMemo(() => {
     const when = (r: TripRow) => Math.max(r.share?.news ?? 0, r.stops.length ? r.stops[r.stops.length - 1].end : 0)
     return (allRows?.filter((r) => r.share?.role === 'follow') ?? []).sort((a, b) => when(b) - when(a))
@@ -133,7 +133,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   }
   const sectionTitle = (s: Section, title: string, count: number) => (
     <button className="section-toggle" onClick={() => toggle(s)} aria-expanded={!closed.includes(s)}>
-      <span className="chev" aria-hidden="true">{closed.includes(s) ? '▸' : '▾'}</span>
+      <span className={`chev${closed.includes(s) ? ' closed' : ''}`} aria-hidden="true"><IconChevron /></span>
       <h2 className="section-title">{title}</h2>
       {closed.includes(s) && count > 0 && <span className="label soft">{count}</span>}
     </button>
@@ -147,7 +147,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
 
   /**
    * Viaggio selezionato per l'anteprima: la mappa mostra solo lui, con le sue
-   * tappe, e sotto la scheda compare «Visualizza tappe». Si apre il viaggio
+   * tappe, e sotto la scheda compare «Apri il viaggio». Si apre il viaggio
    * solo da lì; un altro tocco seleziona un altro viaggio.
    */
   const [selected, setSelected] = useState<string>()
@@ -186,7 +186,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     setSelected(next)
     if (!next) return
     // La scheda scelta si allinea subito sotto la mappa agganciata in alto
-    // (richiesta dell'utente, 30/10/2026). Dopo il disegno: «Visualizza tappe»
+    // (richiesta dell'utente, 30/10/2026). Dopo il disegno: «Apri il viaggio»
     // cambia l'altezza della scheda.
     requestAnimationFrame(() => {
       const card = document.getElementById(`trip-${next}`)
@@ -220,11 +220,16 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
     const follow = r.share?.role === 'follow' ? r.share : undefined
     return (
       <div key={r.trip.id} id={`trip-${r.trip.id}`} className={`trip-item${follow ? ' followed' : ''}${r.trip.id === selected ? ' on' : ''}`}>
-        <button className="trip-card" onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))} aria-pressed={r.trip.id === selected}>
+        <button
+          className="trip-card"
+          onClick={() => (r.stops.length ? select(r.trip.id) : go({ name: 'trip', id: r.trip.id }))}
+          aria-pressed={r.trip.id === selected}
+          aria-label={[r.trip.name, follow ? (follow.by ? `viaggio di ${follow.by}` : 'viaggio seguito') : '', r.stops.length ? fmtRange(r.stops[0].first, r.stops[r.stops.length - 1].first) : 'ancora nessuna foto', r.stops.length ? `${r.photos} foto` : ''].filter(Boolean).join(', ')}
+        >
           <div className="trip-head">
             <span className="label">
               <span className="dot" style={{ background: r.trip.color }} />
-              {follow ? (follow.by ? `👁 Viaggio di ${follow.by}` : '👁 Seguito') : r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
+              {follow ? (follow.by ? `👁 Viaggio di ${follow.by}` : '👁 Viaggio seguito') : r.trip.kind === 'lavoro' ? '💼 Lavoro' : 'Piacere'}
               {r.stops.length ? ` · ${r.stops[0].first.slice(0, 4)}` : ''}
               {r.share?.role === 'owner' ? ' · 📡 In diretta' : ''}
             </span>
@@ -264,17 +269,17 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
               </div>
             </div>
           ) : (
-            <span className="meta">{follow ? 'Ancora nessuna foto' : 'Ancora nessuna foto: tocca per aggiungerle'}</span>
+            <span className="meta">{follow ? 'Ancora nessuna foto' : 'Ancora nessuna foto. Tocca per aggiungerle.'}</span>
           )}
           {follow && (
             <span className="meta follow-meta">
-              {follow.ended ? 'Non è più condiviso: ora esiste solo su questo telefono, tienilo nel backup.' : follow.at ? `Aggiornato ${fmtStamp(follow.at)}` : 'In attesa del primo aggiornamento'}
+              {follow.ended ? 'Non è più condiviso. Ora c\'è solo su questo telefono, tienilo nel backup.' : follow.at ? `Aggiornato ${fmtStamp(follow.at)}` : 'In attesa del primo aggiornamento'}
             </span>
           )}
         </button>
         {r.trip.id === selected && (
           <button className="btn open-trip" onClick={() => go({ name: 'trip', id: r.trip.id })}>
-            Visualizza tappe →
+            Apri il viaggio →
           </button>
         )}
       </div>
@@ -330,18 +335,15 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
       )}
 
       {due && (
-        <div className="note-box warm backup-due">
-          <span>
-            <b>Fai un backup</b> · ultimo: {describeBackupAge(backup)}. I viaggi esistono solo su questo telefono.
-          </span>
-          <span className="row">
-            <button className="btn small-btn" disabled={backingUp} onClick={() => void doBackup()}>
-              Esporta ora
-            </button>
-            <button className="btn ghost small-btn" onClick={snoozeBackup}>
-              Più tardi
-            </button>
-          </span>
+        // Una riga sola, non la prima cosa che si vede (revisione, U14).
+        <div className="backup-line" role="status">
+          <span>{backup.at ? `Ultimo backup ${describeBackupAge(backup)}` : 'Backup mai fatto'}</span>
+          <button className="small-link" disabled={backingUp} onClick={() => void doBackup()}>
+            Fai il backup
+          </button>
+          <button className="small-link muted" onClick={snoozeBackup}>
+            Più tardi
+          </button>
         </div>
       )}
 
@@ -376,7 +378,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
             <IconPlus /> Nuovo viaggio
           </button>
           <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setFollowing('')}>
-            Segui il viaggio di qualcuno
+            Segui un viaggio
           </button>
         </div>
       )}
@@ -385,7 +387,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
 
       {allRows.length > 0 && (
         // «Nuovo viaggio» accanto al titolo e non fisso sullo schermo: copriva
-        // «Visualizza tappe» dell'anteprima. Un viaggio nuovo si crea appena
+        // «Apri il viaggio» dell'anteprima. Un viaggio nuovo si crea appena
         // aperta l'app, non dopo aver scorso l'elenco (scelta dell'utente, 27/10/2026).
         // Chi ha solo viaggi seguiti vede un invito più discreto.
         <div className="section-head">
@@ -421,6 +423,8 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
       {!followFirst && followedSection}
 
       {/* Solo «torna in cima», senza giorni (richiesta dell'utente). */}
+      {/* Spazio per il pulsante «torna in cima», che altrimenti copre l'ultima scheda (revisione, U6). */}
+      <div className="day-nav-room" aria-hidden="true" />
       <DayNav days={0} />
 
       {creating && (
@@ -433,7 +437,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
               void create()
             }}
           >
-            <input className="field" autoFocus placeholder="Es. Giappone 2026" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+            <input className="field" autoFocus aria-label="Nome del viaggio" placeholder="Es. Giappone 2026" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
             <KindPicker value={kind} onChange={setKind} />
             <button className="btn" type="submit" disabled={!name.trim()}>
               Crea
