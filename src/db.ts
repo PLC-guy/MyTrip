@@ -234,6 +234,11 @@ export interface Share {
   notify?: { mode: 'each' | 'daily'; hour: number; sub: string }
   /** Solo owner: foto nuove il cui avviso a chi segue aspetta i nomi dei luoghi (sync.ts). */
   note?: { ids: string[]; since: number }
+  /**
+   * Solo owner: ripresa da un backup, quindi `sent` può non coincidere con il
+   * server. Il primo invio controlla l'indice sul server (sync.ts).
+   */
+  recheck?: boolean
 }
 
 export const db = new Dexie('mytrip') as Dexie & {
@@ -385,6 +390,25 @@ if (import.meta.env.DEV) {
   db.trips.hook('creating', (_id, t) => warn(t))
   db.photos.hook('updating', (mods) => warn(mods as Partial<Photo>))
   db.trips.hook('updating', (mods) => warn(mods as Partial<Trip>))
+}
+
+/**
+ * All'avvio: via le foto di un viaggio che non c'è. Le lascia un ripristino
+ * interrotto (backup.ts scrive prima le foto, poi viaggi e tappe). Nessuno le
+ * vede, ma risulterebbero «già presenti» importando le stesse foto e
+ * occuperebbero spazio. Solo chiavi, senza leggere le miniature. All'avvio
+ * nessun ripristino è in corso; rifacendolo, le foto tornano.
+ */
+export async function dropOrphanPhotos(): Promise<void> {
+  // Una transazione sola: un viaggio creato nel frattempo non perde le sue foto.
+  await db.transaction('rw', db.trips, db.photos, async () => {
+    const trips = new Set(await db.trips.toCollection().primaryKeys())
+    const orphans: string[] = []
+    await db.photos.orderBy('tripId').eachKey((tripId, cursor) => {
+      if (!trips.has(tripId as string)) orphans.push(cursor.primaryKey as string)
+    })
+    if (orphans.length) await db.photos.bulkDelete(orphans)
+  })
 }
 
 /**

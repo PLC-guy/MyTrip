@@ -4,6 +4,7 @@ import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, 
 import { decrypt, encrypt, fromB64url, randomB64url, sha256, toB64url } from './crypt'
 import { forgetThumbs } from './thumbUrl'
 import { getProfile } from './profile'
+import { setBusy } from './update'
 
 /**
  * VIAGGI CONDIVISI IN DIRETTA (richiesta dell'utente, 30/10/2026)
@@ -180,7 +181,23 @@ async function pushOnce(tripId: string): Promise<void> {
   const sent = { ...(share.sent ?? {}) }
   let changed = false
   let note = share.note
+  // L'indice da confrontare: dopo un ripristino si ricarica comunque.
+  let lastV = share.v
+  let busy = false
   try {
+    // ⚠️ CONDIVISIONE RIPRESA DA UN BACKUP (revisione di robustezza D2, 2/11/2026)
+    // Su un telefono nuovo `sent` è quello del backup. Una foto tolta dopo il
+    // backup torna col backup ma risultava già mandata, mentre il server l'aveva
+    // cancellata: chi segue non la trovava mai. Una sola lettura, l'indice del
+    // server, dice quali foto ci sono davvero; le altre si ricaricano.
+    if (share.recheck) {
+      const index = await getIndex(share)
+      const there = new Set(index?.photos.map((p) => p.id))
+      if (index?.trip.coverImageId) there.add(index.trip.coverImageId)
+      for (const id of Object.keys(sent)) if (sent[id] > 0 && !there.has(id)) delete sent[id]
+      lastV = undefined
+      changed = true
+    }
     const stops = await db.stops.where('tripId').equals(tripId).sortBy('start')
     const photos = await db.photos.where('tripId').equals(tripId).toArray()
     const routes = await db.routes.where('tripId').equals(tripId).toArray()
@@ -199,6 +216,11 @@ async function pushOnce(tripId: string): Promise<void> {
     // 2 MB del server, ma una sola foto rifiutata bloccava tutta la condivisione.
     const refused = (id: string, size: number) => sent[id] === -size
     const todo = blobs.filter((b) => sent[b.id] !== b.blob.size && !refused(b.id, b.blob.size))
+    // Mentre le foto partono l'app non si ricarica per un aggiornamento.
+    if (todo.length) {
+      setBusy(true)
+      busy = true
+    }
     for (let i = 0; i < todo.length; i += PARALLEL) {
       setStatus(tripId, { busy: true, done: i, total: todo.length })
       await Promise.all(
@@ -213,6 +235,13 @@ async function pushOnce(tripId: string): Promise<void> {
           changed = true
         }),
       )
+      // ⚠️ PROGRESSI SALVATI MAN MANO (revisione di robustezza D2, 2/11/2026)
+      // Prima `sent` si salvava solo a fine giro: se iOS chiudeva l'app a metà
+      // della prima condivisione, il giro dopo ricaricava tutte le foto (ogni
+      // foto è una delle 1000 scritture al giorno del server). Questa scrittura
+      // sveglia `watch`: alla fine c'è un solo giro in più, che non trova niente
+      // da fare e non scrive.
+      await db.shares.update(tripId, { sent, note })
     }
 
     // L'indice, solo se è cambiato. Prima le foto, poi l'indice: chi segue
@@ -228,7 +257,7 @@ async function pushOnce(tripId: string): Promise<void> {
     }
     const json = JSON.stringify(index)
     const v = await sha256(json)
-    if (v !== share.v) {
+    if (v !== lastV) {
       setStatus(tripId, { busy: true })
       await putPiece(share, 'm', await gzip(json), v)
     }
@@ -265,7 +294,7 @@ async function pushOnce(tripId: string): Promise<void> {
     }
     // ⚠️ Si scrive solo se qualcosa è cambiato: la scrittura sveglia `watch`,
     // che rifà un giro; quel giro non trova novità e si ferma lì.
-    if (changed || v !== share.v || share.error) await db.shares.update(tripId, { sent, v, note, at: Date.now(), error: undefined })
+    if (changed || v !== share.v || share.error) await db.shares.update(tripId, { sent, v, note, at: Date.now(), error: undefined, recheck: undefined })
     retryLater(tripId, undefined)
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e)
@@ -274,6 +303,8 @@ async function pushOnce(tripId: string): Promise<void> {
     // giro, all'infinito, ricaricando ogni volta le stesse foto.
     if (changed || error !== share.error || JSON.stringify(note) !== JSON.stringify(share.note)) await db.shares.update(tripId, { sent, note, error })
     retryLater(tripId, error)
+  } finally {
+    if (busy) setBusy(false)
   }
 }
 

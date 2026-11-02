@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Trip } from './db'
-import { readImport, type ExportFile } from './backup'
+import { readWhole, type ExportFile } from './backup'
 import { applyMerge, planMerge, type MergePlan } from './merge'
 import { geocodePending } from './geocode'
 import { routesPending } from './routing'
@@ -39,7 +39,7 @@ export default function MergeSheet({ trip, onClose, onDone, leaving, swap }: { t
   function onFile(file: File | undefined) {
     if (!file) return
     void run(async () => {
-      const { data } = await readImport(file)
+      const data = await readWhole(file)
       if (data.trips.length === 0) throw new Error('Nel file non ci sono viaggi.')
       if (data.trips.length > 1) return setStep({ kind: 'choose', data })
       setStep({ kind: 'plan', plan: await planMerge(trip.id, data, data.trips[0].id) })

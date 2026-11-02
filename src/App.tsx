@@ -15,7 +15,7 @@ import InstallGate from './InstallGate'
 import { readEnvironment } from './install'
 import { geocodePending } from './geocode'
 import { weatherPending } from './weather'
-import { convertThumbs, recolorTrips } from './db'
+import { convertThumbs, dropOrphanPhotos, recolorTrips } from './db'
 import { routesPending } from './routing'
 import { startSync } from './sync'
 import { reloadLoopDetected } from './reloadGuard'
@@ -106,6 +106,7 @@ export default function App() {
     void weatherPending()
     void recolorTrips()
     void convertThumbs()
+    void dropOrphanPhotos()
     void routesPending()
     startSync()
     return () => window.removeEventListener('hashchange', onHash)

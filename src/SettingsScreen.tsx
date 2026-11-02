@@ -303,6 +303,8 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
   // decine di MB e il telefono ci mette un po' (2/11/2026: senza avviso
   // sembrava che non succedesse niente).
   const [importing, setImporting] = useState(false)
+  // Foto scritte durante il ripristino, per un backup grande.
+  const [written, setWritten] = useState<{ done: number; total: number }>()
   // Domanda, avviso e risultato stanno sotto il pulsante: sul telefono possono
   // finire fuori vista, quindi la pagina ci scorre da sola.
   const outcome = useRef<HTMLDivElement>(null)
@@ -313,7 +315,10 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
 
   async function finish(parsed: ParsedImport, withShares: boolean) {
     setImporting(true)
-    const r = await applyImport(parsed, withShares).finally(() => setImporting(false))
+    const r = await applyImport(parsed, withShares, (done, total) => setWritten({ done, total })).finally(() => {
+      setImporting(false)
+      setWritten(undefined)
+    })
     void geocodePending()
     void routesPending()
     if (!r.photos && !r.newTrips && !r.filled) return 'Avevi già tutto, non ho aggiunto niente.'
@@ -396,7 +401,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       <div ref={outcome}>
       {importing && (
         <div className="note-box" style={{ marginTop: 12 }} role="status">
-          Leggo il file. Se è un backup grande può volerci un po', tieni l'app aperta.
+          {written ? `Aggiungo le foto: ${written.done} di ${written.total}. Tieni l'app aperta.` : "Leggo il file. Se è un backup grande può volerci un po', tieni l'app aperta."}
         </div>
       )}
       {ask && (

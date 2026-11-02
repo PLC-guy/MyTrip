@@ -30,12 +30,16 @@ const ATTESA_MS = 4000
 
 const startedAt = Date.now()
 let pending = false
-let busy = false
+let busy = 0
 let showBanner: () => void = () => {}
 
-/** Durante un import l'app non deve ricaricarsi. */
+/**
+ * Durante un import, un backup, un ripristino o un invio della condivisione
+ * l'app non deve ricaricarsi. Un contatore: due lavori insieme (un invio
+ * durante un import) non si annullano a vicenda. Ogni `true` vuole il suo `false`.
+ */
 export function setBusy(value: boolean): void {
-  busy = value
+  busy = Math.max(0, busy + (value ? 1 : -1))
   if (!busy && pending) showBanner()
 }
 

@@ -87,10 +87,11 @@ export function describeBackupAge(state: BackupState): string {
  * (osservazione dell'utente, 30/10/2026).
  */
 export async function photosToKeep(): Promise<number> {
-  const live = (await db.shares.where('role').equals('follow').toArray()).filter((s) => !s.ended)
-  let n = await db.photos.count()
-  for (const s of live) n -= await db.photos.where('tripId').equals(s.tripId).count()
-  return n
+  const live = new Set((await db.shares.where('role').equals('follow').toArray()).filter((s) => !s.ended).map((s) => s.tripId))
+  // Solo le foto dei viaggi che ci sono: quelle rimaste da un ripristino
+  // interrotto (backup.ts) non sono nel backup e non vanno contate.
+  const trips = (await db.trips.toCollection().primaryKeys()).filter((id) => !live.has(id))
+  return db.photos.where('tripId').anyOf(trips).count()
 }
 
 export function backupDue(state: BackupState, photos: number, now = new Date()): boolean {
