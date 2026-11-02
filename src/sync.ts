@@ -96,12 +96,24 @@ async function call(method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, sha
   return r
 }
 
+/**
+ * Telefoni troppo vecchi (iPhone sotto iOS 16.4, per esempio iPhone 7, fermo a
+ * iOS 15) non sanno comprimere: prima compariva un errore tecnico in inglese
+ * (revisione di robustezza S3, 2/11/2026). Riguarda soprattutto chi segue.
+ */
+export const NEEDS_NEWER = 'Serve un telefono più aggiornato. Su iPhone almeno iOS 16.4.'
+function canZip(): void {
+  if (typeof CompressionStream === 'undefined' || typeof DecompressionStream === 'undefined') throw new Error(NEEDS_NEWER)
+}
+
 async function gzip(text: string): Promise<Uint8Array<ArrayBuffer>> {
+  canZip()
   const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
 async function gunzip(data: ArrayBuffer): Promise<string> {
+  canZip()
   return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
 }
 
@@ -181,13 +193,23 @@ async function pushOnce(tripId: string): Promise<void> {
     // Miniature (e copertina caricata a mano) nuove o cambiate.
     const blobs = photos.map((p) => ({ id: p.id, blob: p.thumb }))
     if (trip.coverImage && trip.coverImageId) blobs.push({ id: trip.coverImageId, blob: trip.coverImage })
-    const todo = blobs.filter((b) => sent[b.id] !== b.blob.size)
+    // ⚠️ Foto rifiutata perché troppo pesante (413): `sent` ne tiene il peso col
+    // segno meno e non si riprova finché la miniatura non cambia. Rete di
+    // sicurezza (2/11/2026): le miniature sono a 1080 px e restano ben sotto i
+    // 2 MB del server, ma una sola foto rifiutata bloccava tutta la condivisione.
+    const refused = (id: string, size: number) => sent[id] === -size
+    const todo = blobs.filter((b) => sent[b.id] !== b.blob.size && !refused(b.id, b.blob.size))
     for (let i = 0; i < todo.length; i += PARALLEL) {
       setStatus(tripId, { busy: true, done: i, total: todo.length })
       await Promise.all(
         todo.slice(i, i + PARALLEL).map(async (b) => {
-          await putPiece(share, `p/${b.id}`, await b.blob.arrayBuffer())
-          sent[b.id] = b.blob.size
+          try {
+            await putPiece(share, `p/${b.id}`, await b.blob.arrayBuffer())
+            sent[b.id] = b.blob.size
+          } catch (e) {
+            if (!(e instanceof Error && e.message === explain(413))) throw e
+            sent[b.id] = -b.blob.size
+          }
           changed = true
         }),
       )
@@ -201,7 +223,7 @@ async function pushOnce(tripId: string): Promise<void> {
       trip: { ...trip, coverImage: undefined },
       stops,
       routes,
-      photos: photos.map((p) => ({ ...p, thumb: undefined, size: p.thumb.size })),
+      photos: photos.filter((p) => !refused(p.id, p.thumb.size)).map((p) => ({ ...p, thumb: undefined, size: p.thumb.size })),
       by: getProfile().name,
     }
     const json = JSON.stringify(index)
@@ -244,9 +266,33 @@ async function pushOnce(tripId: string): Promise<void> {
     // ⚠️ Si scrive solo se qualcosa è cambiato: la scrittura sveglia `watch`,
     // che rifà un giro; quel giro non trova novità e si ferma lì.
     if (changed || v !== share.v || share.error) await db.shares.update(tripId, { sent, v, note, at: Date.now(), error: undefined })
+    retryLater(tripId, undefined)
   } catch (e) {
-    await db.shares.update(tripId, { sent, note, error: e instanceof Error ? e.message : String(e) })
+    const error = e instanceof Error ? e.message : String(e)
+    // ⚠️ Si scrive solo se qualcosa è cambiato davvero (revisione di robustezza
+    // D1, 2/11/2026): ogni scrittura sveglia `watch`, che dopo 4 s rifaceva il
+    // giro, all'infinito, ricaricando ogni volta le stesse foto.
+    if (changed || error !== share.error || JSON.stringify(note) !== JSON.stringify(share.note)) await db.shares.update(tripId, { sent, note, error })
+    retryLater(tripId, error)
   }
+}
+
+/**
+ * Dopo un errore si riprova da soli con attese sempre più lunghe (1, 5, 15,
+ * poi ogni 30 minuti), oltre ai momenti di sempre: avvio, rete che torna,
+ * modifiche al viaggio. Un permesso rifiutato o un viaggio troppo grande non
+ * passano da soli: lì si aspetta l'utente.
+ */
+const RETRY_MIN = [1, 5, 15, 30]
+const retries = new Map<string, { n: number; timer: ReturnType<typeof setTimeout> }>()
+function retryLater(tripId: string, error: string | undefined): void {
+  const cur = retries.get(tripId)
+  clearTimeout(cur?.timer)
+  retries.delete(tripId)
+  if (!error || error === explain(403) || error === explain(413)) return
+  const n = (cur?.n ?? -1) + 1
+  const timer = setTimeout(() => void pushShare(tripId), RETRY_MIN[Math.min(n, RETRY_MIN.length - 1)] * 60_000)
+  retries.set(tripId, { n, timer })
 }
 
 /** Inizia a condividere: crea id, chiave e permesso, poi carica tutto. */
@@ -466,8 +512,57 @@ export async function currentPushSub(): Promise<string | undefined> {
  */
 export async function leaveShare(tripId: string): Promise<void> {
   const share = await db.shares.get(tripId)
-  if (share?.role === 'owner') await stopSharing(tripId)
-  else if (share?.notify) await setNotify(tripId, null)
+  if (!share || (share.role !== 'owner' && !share.notify)) return
+  try {
+    if (share.role === 'owner') await stopSharing(tripId)
+    else await setNotify(tripId, null)
+  } catch {
+    // Il viaggio sta per sparire dal telefono, e con lui il permesso.
+    queueLeave(share)
+  }
+}
+
+/**
+ * ⚠️ DA TOGLIERE DAL SERVER (revisione di robustezza D3, 2/11/2026)
+ *
+ * Eliminando un viaggio condiviso senza rete (o col server in errore) il
+ * viaggio restava sul server per sempre: il permesso di scrittura spariva col
+ * viaggio e nessuno poteva più revocarlo. Chi aveva il link lo leggeva ancora
+ * e non vedeva mai «non è più condiviso». Lo stesso per le notifiche di un
+ * viaggio che si smette di seguire. Ora la condivisione resta in coda qui e si
+ * riprova all'avvio e al ritorno della rete, finché il server non conferma.
+ */
+const LEAVE_KEY = 'mytrip:da-togliere'
+function leaveQueue(): Share[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(LEAVE_KEY) ?? '[]') as unknown
+    return Array.isArray(list) ? (list as Share[]) : []
+  } catch {
+    return []
+  }
+}
+function saveLeaveQueue(list: Share[]): void {
+  try {
+    if (list.length) localStorage.setItem(LEAVE_KEY, JSON.stringify(list))
+    else localStorage.removeItem(LEAVE_KEY)
+  } catch {
+    // ignorata di proposito
+  }
+}
+function queueLeave(share: Share): void {
+  saveLeaveQueue([...leaveQueue().filter((s) => s.id !== share.id), { tripId: share.tripId, role: share.role, id: share.id, key: share.key, token: share.token, notify: share.notify }])
+}
+async function retryLeaves(): Promise<void> {
+  for (const s of leaveQueue()) {
+    try {
+      if (s.role === 'owner') await call('DELETE', '', s)
+      else if (s.notify) await call('DELETE', `/sub/${s.notify.sub}`, s)
+    } catch (e) {
+      // Già revocato (403): non c'è più niente da togliere. Altrimenti si riprova.
+      if (!(e instanceof Error && e.message === explain(403))) continue
+    }
+    saveLeaveQueue(leaveQueue().filter((x) => x.id !== s.id))
+  }
 }
 
 // --- Quando sincronizzare ----------------------------------------------------
@@ -495,6 +590,7 @@ let started = false
 export function startSync(): void {
   if (started) return
   started = true
+  void retryLeaves()
   void pushAll()
   void pullAll()
 
@@ -520,6 +616,7 @@ export function startSync(): void {
   })
 
   window.addEventListener('online', () => {
+    void retryLeaves()
     void pushAll()
     void pullAll()
   })

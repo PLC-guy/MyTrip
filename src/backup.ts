@@ -1,6 +1,6 @@
-import { asStored, db, toStored, type Photo, type Route, type Share, type Stop, type Trip } from './db'
+import { asStored, db, stopSummary, type Photo, type Route, type Share, type Stop, type Trip } from './db'
 import { forgetThumbs } from './thumbUrl'
-import { currentPushSub } from './sync'
+import { currentPushSub, NEEDS_NEWER } from './sync'
 import { cleanGrouping, getGrouping, setGrouping, type Grouping } from './grouping'
 import type { Progress } from './exportFlow'
 import { shareThumb } from './shareThumb'
@@ -127,6 +127,7 @@ async function pack(json: File, base: string): Promise<File> {
 async function unpack(file: File): Promise<string> {
   const head = new Uint8Array(await file.slice(0, 2).arrayBuffer())
   if (head[0] !== 0x1f || head[1] !== 0x8b) return file.text()
+  if (typeof DecompressionStream === 'undefined') throw new Error(NEEDS_NEWER)
   return new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text()
 }
 
@@ -168,7 +169,14 @@ export async function exportBackup(onProgress?: Progress): Promise<File> {
 
 export interface ImportSummary {
   trips: string[]
+  /** Viaggi che sul telefono non c'erano. */
+  newTrips: number
+  /** Foto aggiunte. */
   photos: number
+  /** Foto del file che c'erano già, lasciate come sono. */
+  present: number
+  /** Viaggi già presenti che hanno ricevuto giorni del diario o notti. */
+  filled: number
 }
 
 /**
@@ -216,7 +224,8 @@ export async function readImport(file: File): Promise<ParsedImport> {
   let data: ExportFile
   try {
     data = JSON.parse(await unpack(file)) as ExportFile
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message === NEEDS_NEWER) throw e
     throw new Error('Il file non è leggibile.')
   }
   if (data?.app !== APP || !Array.isArray(data.trips) || !Array.isArray(data.stops) || !Array.isArray(data.photos)) {
@@ -247,7 +256,8 @@ export async function importFile(file: File): Promise<ImportSummary> {
 
 /**
  * Importa un viaggio o un backup. Gli id sono gli stessi dell'esportazione:
- * ciò che esiste già si aggiorna, il resto si aggiunge. Niente si cancella.
+ * si aggiunge solo ciò che manca (vedi sotto). Niente si cancella e niente
+ * torna indietro.
  */
 export async function applyImport({ data }: ParsedImport, withShares: boolean): Promise<ImportSummary> {
   // Ogni scheda deve stare in un viaggio del file, e non può prendere il posto
@@ -266,20 +276,62 @@ export async function applyImport({ data }: ParsedImport, withShares: boolean): 
     routes: data.routes?.filter((r) => fits(r, routeOwner)),
   }
 
-  const photos: Photo[] = data.photos.map((p) => ({ ...p, thumb: dataUrlToStored(p.thumb) }))
-  // ⚠️ Un file da condividere ha miniature ridotte: se quelle foto ci sono già
-  // (per esempio un viaggio che torna indietro da chi l'ha ricevuto), si tengono
-  // le miniature di qui, più nitide. Tutto il resto si aggiorna come sempre.
-  if (data.lite) {
-    const existing = await db.photos.bulkGet(photos.map((p) => p.id))
-    await Promise.all(
-      photos.map(async (p, i) => {
-        const old = existing[i]
-        if (old) p.thumb = await toStored(old.thumb)
-      }),
-    )
+  // ⚠️ IL FILE AGGIUNGE SOLO CIÒ CHE MANCA (revisione di robustezza R1, scelta
+  // dell'utente del 2/11/2026). Prima vinceva sempre il file: ripristinare un
+  // backup vecchio per riavere un viaggio cancellato riportava indietro anche
+  // tutti gli altri (note, nomi, diario, notti, tappe divise) senza dirlo.
+  // Ora, come «Unisci» ma con gli stessi id:
+  // - viaggi, tappe e foto che sul telefono ci sono già restano come sono;
+  // - una foto entra solo se manca (né lo stesso id né la stessa impronta);
+  // - una tappa del file entra solo se porta foto nuove; una che c'è già
+  //   riceve le foto nuove e si ricalcolano centro e orari;
+  // - di un viaggio che c'è già si aggiungono solo i giorni del diario e le
+  //   notti che qui mancano.
+  // Le foto tolte dopo il backup quindi tornano: meglio una foto in più da
+  // togliere a mano che dati persi. Le miniature di qui non si toccano mai
+  // (anche con un file «leggero»).
+  const localTrips = new Map((await db.trips.bulkGet(data.trips.map((t) => t.id))).flatMap((t) => (t ? [[t.id, t] as const] : [])))
+  const localStops = new Map((await db.stops.bulkGet(data.stops.map((s) => s.id))).flatMap((s) => (s ? [[s.id, s] as const] : [])))
+  const knownKeys = new Set((await db.photos.where('key').anyOf(data.photos.map((p) => p.key)).toArray()).map((p) => p.key))
+  const freshFiles = data.photos.filter((p) => {
+    if (photoOwner.has(p.id) || knownKeys.has(p.key)) return false
+    knownKeys.add(p.key)
+    return true
+  })
+  const photos: Photo[] = freshFiles.map((p) => ({ ...p, thumb: dataUrlToStored(p.thumb) }))
+  const freshByStop = new Map<string, Photo[]>()
+  for (const p of photos) freshByStop.set(p.stopId, [...(freshByStop.get(p.stopId) ?? []), p])
+
+  const stops: Stop[] = []
+  for (const s of data.stops) {
+    const fresh = freshByStop.get(s.id)
+    if (!fresh) continue
+    const cur = localStops.get(s.id)
+    if (!cur) {
+      stops.push({ ...s, ...stopSummary(fresh) })
+      continue
+    }
+    const summary = stopSummary([...(await db.photos.where('stopId').equals(s.id).toArray()), ...fresh])
+    // Se la tappa ora comincia prima, il meteo va richiesto per la nuova ora.
+    stops.push({ ...cur, ...summary, ...(summary.first !== cur.first ? { weather: undefined, weatherDone: undefined } : {}) })
   }
-  const trips: Trip[] = data.trips.map((t) => ({ ...t, coverImage: t.coverImage ? dataUrlToStored(t.coverImage) : undefined }))
+  // Foto la cui tappa non è nel file né sul telefono: non avrebbero dove stare.
+  const placed = new Set([...stops.map((s) => s.id), ...localStops.keys()])
+  const keptPhotos = photos.filter((p) => placed.has(p.stopId))
+
+  const trips: Trip[] = []
+  for (const t of data.trips) {
+    const cur = localTrips.get(t.id)
+    if (!cur) {
+      trips.push({ ...t, coverImage: t.coverImage ? dataUrlToStored(t.coverImage) : undefined })
+      continue
+    }
+    const diary = { ...t.diary, ...cur.diary }
+    const nights = { ...t.nights, ...cur.nights }
+    const more = Object.keys(diary).length > Object.keys(cur.diary ?? {}).length || Object.keys(nights).length > Object.keys(cur.nights ?? {}).length
+    if (more) trips.push({ ...cur, diary, nights })
+  }
+  const routes = (data.routes ?? []).filter((r) => !routeOwner.has(r.id))
 
   // ⚠️ Notifiche dei viaggi seguiti (richiesta dell'utente, 30/10/2026):
   // l'iscrizione vale per UN telefono e UNA installazione dell'app. Ripristinata
@@ -297,15 +349,22 @@ export async function applyImport({ data }: ParsedImport, withShares: boolean): 
 
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
   // indirizzi in memoria puntano alle immagini di prima.
-  forgetThumbs([...photos.map((p) => p.id), ...trips.flatMap((t) => (t.coverImageId ? [t.coverImageId] : []))])
+  forgetThumbs([...keptPhotos.map((p) => p.id), ...trips.flatMap((t) => (!localTrips.has(t.id) && t.coverImageId ? [t.coverImageId] : []))])
 
   await db.transaction('rw', [db.trips, db.stops, db.photos, db.routes, db.shares], async () => {
     await db.trips.bulkPut(trips)
     if (shares.length) await db.shares.bulkAdd(shares)
     if (data.kind === 'backup' && data.grouping) setGrouping(cleanGrouping(data.grouping))
-    await db.stops.bulkPut(data.stops)
-    await db.photos.bulkPut(photos)
-    if (Array.isArray(data.routes)) await db.routes.bulkPut(data.routes)
+    await db.stops.bulkPut(stops)
+    await db.photos.bulkAdd(keptPhotos)
+    await db.routes.bulkAdd(routes)
   })
-  return { trips: data.trips.map((t) => t.name), photos: photos.length }
+  return {
+    // Il nome di adesso, non quello del file (che può essere più vecchio).
+    trips: data.trips.map((t) => localTrips.get(t.id)?.name ?? t.name),
+    newTrips: data.trips.filter((t) => !localTrips.has(t.id)).length,
+    photos: keptPhotos.length,
+    present: data.photos.length - keptPhotos.length,
+    filled: trips.filter((t) => localTrips.has(t.id)).length,
+  }
 }

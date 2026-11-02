@@ -1,5 +1,6 @@
 import { registerSW } from 'virtual:pwa-register'
 import { unregisterEverything } from './reloadGuard'
+import { sheetsOpen } from './Sheet'
 
 /**
  * AGGIORNAMENTO AUTOMATICO
@@ -11,7 +12,10 @@ import { unregisterEverything } from './reloadGuard'
  * applicarla vuol dire ricaricare la pagina:
  *  - nei primi secondi dopo l'apertura, prima che si inizi a usare l'app;
  *  - al rientro dell'app in primo piano (sullo schermo c'era altro);
- *  - mai durante un import di foto: si aspetta che finisca.
+ *  - mai durante un import di foto: si aspetta che finisca;
+ *  - mai con un foglio aperto (revisione di robustezza R4, 2/11/2026): diario,
+ *    nota della tappa, scelta delle foto, ripristino. Si scrive il diario, si
+ *    passa a Foto e si torna: la ricarica faceva sparire il testo non salvato.
  * Fuori da questi momenti compare solo un avviso da toccare, per non far
  * sparire a metà una nota che si sta scrivendo.
  *
@@ -37,6 +41,10 @@ export function setBusy(value: boolean): void {
 
 function tryApply(momento: 'arrivo' | 'rientro'): void {
   if (busy) return
+  if (sheetsOpen() > 0) {
+    showBanner()
+    return
+  }
   if (momento === 'rientro' || Date.now() - startedAt < AVVIO_MS) void applyUpdate()
   else showBanner()
 }
@@ -96,6 +104,13 @@ export async function applyUpdate(): Promise<void> {
   window.setTimeout(() => {
     if (done) return
     done = true
+    // ⚠️ Senza rete NON si riparte dalla rete (revisione di robustezza R5): la
+    // pagina non si caricherebbe più finché la rete non torna. Resta la
+    // versione di adesso, si riprova al prossimo rientro.
+    if (!navigator.onLine) {
+      showBanner()
+      return
+    }
     void forceUpdate()
   }, ATTESA_MS)
 }

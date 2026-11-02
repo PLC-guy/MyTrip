@@ -939,8 +939,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             <button
               className="btn danger"
               onClick={async () => {
-                // Condiviso: via anche dal server (se manca la rete, resta lì cifrato).
-                // Seguito: via l'iscrizione alle notifiche.
+                // Condiviso: via anche dal server. Seguito: via l'iscrizione alle
+                // notifiche. Se manca la rete si riprova dopo da soli (D3, sync.ts).
                 await leaveShare(id).catch(() => {})
                 await deleteTrip(id)
                 go({ name: 'home' })

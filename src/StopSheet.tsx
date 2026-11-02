@@ -11,7 +11,7 @@ import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
 import { routesPending } from './routing'
 import { useProfile } from './profile'
-import { mealVenue, rateMeal } from './venues'
+import { mealVenue, rateMeal, sameVenue } from './venues'
 
 interface Props {
   stop: Stop
@@ -288,30 +288,46 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
         </Sheet>
       )}
 
-      {ask?.kind === 'merge' && (
-        <Sheet onClose={() => setAsk(undefined)}>
-          <h2>Unire le tappe?</h2>
-          <p className="small">
-            Le foto di «{stopTitle(stop)}» passano a «{stopTitle(ask.other)}», con note e stellina. Si può tornare indietro dividendo la tappa.
-          </p>
-          <div className="stack">
-            <button
-              className="btn"
-              onClick={async () => {
-                saveNote()
-                await mergeStops(ask.other.id, stop.id)
-                setAsk(undefined)
-                void weatherPending()
-                void routesPending()
-                onOpen(ask.other.id)
-              }}
-            >
-              Unisci le tappe
-            </button>
-            <button className="btn ghost" onClick={() => setAsk(undefined)}>Annulla</button>
-          </div>
-        </Sheet>
-      )}
+      {ask?.kind === 'merge' && (() => {
+        const merge = async (keep: 'into' | 'from') => {
+          saveNote()
+          await mergeStops(ask.other.id, stop.id, keep)
+          setAsk(undefined)
+          void weatherPending()
+          void routesPending()
+          onOpen(ask.other.id)
+        }
+        // Due locali diversi: ne resta uno solo, lo sceglie l'utente (R3).
+        const mine = stop.meal
+        const theirs = ask.other.meal
+        const twoMeals = !!mine && !!theirs && !sameVenue(mealVenue({ ...stop, meal: mine }), mealVenue({ ...ask.other, meal: theirs }))
+        return (
+          <Sheet onClose={() => setAsk(undefined)}>
+            <h2>Unire le tappe?</h2>
+            <p className="small">
+              Le foto di «{stopTitle(stop)}» passano a «{stopTitle(ask.other)}», con note e stellina. Si può tornare indietro dividendo la tappa.
+            </p>
+            {twoMeals && <p className="small">Tutte e due le tappe hanno un locale, ne resta uno solo. Scegli quale tenere, l'altro si toglie col suo voto.</p>}
+            <div className="stack">
+              {twoMeals ? (
+                <>
+                  <button className="btn" onClick={() => void merge('into')}>
+                    Tieni «{theirs.name}»
+                  </button>
+                  <button className="btn" onClick={() => void merge('from')}>
+                    Tieni «{mine.name}»
+                  </button>
+                </>
+              ) : (
+                <button className="btn" onClick={() => void merge('into')}>
+                  Unisci le tappe
+                </button>
+              )}
+              <button className="btn ghost" onClick={() => setAsk(undefined)}>Annulla</button>
+            </div>
+          </Sheet>
+        )
+      })()}
     </Sheet>
   )
 }

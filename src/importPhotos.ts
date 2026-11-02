@@ -91,8 +91,10 @@ async function assignToStops(tripId: string, incoming: Omit<Photo, 'stopId'>[]):
   const { radiusM, gapMin } = getGrouping()
   await db.transaction('rw', db.stops, db.photos, async () => {
     const stops = await db.stops.where('tripId').equals(tripId).toArray()
+    // Le foto di una tappa si leggono solo se la tappa riceve foto nuove
+    // (revisione di robustezza S1, 2/11/2026): prima si leggevano tutte,
+    // miniature comprese, a ogni gruppo di 10 foto.
     const members = new Map<string, Pick<Photo, 'lat' | 'lon' | 'time' | 'taken'>[]>()
-    for (const s of stops) members.set(s.id, await db.photos.where('stopId').equals(s.id).toArray())
     const touched = new Set<string>()
     const photos: Photo[] = []
 
@@ -113,7 +115,8 @@ async function assignToStops(tripId: string, incoming: Omit<Photo, 'stopId'>[]):
         stops.push(target)
         members.set(target.id, [])
       }
-      const list = members.get(target.id)!
+      const list = members.get(target.id) ?? (await db.photos.where('stopId').equals(target.id).toArray())
+      members.set(target.id, list)
       list.push(p)
       Object.assign(target, stopSummary(list))
       touched.add(target.id)

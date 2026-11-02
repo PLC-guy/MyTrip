@@ -316,7 +316,9 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
     const r = await applyImport(parsed, withShares).finally(() => setImporting(false))
     void geocodePending()
     void routesPending()
-    return `Hai importato ${r.trips.length > 1 ? `${r.trips.slice(0, -1).join(', ')} e ${r.trips.at(-1)}` : r.trips[0]}. ${plural(r.photos, 'foto', 'foto')} in tutto.`
+    if (!r.photos && !r.newTrips && !r.filled) return 'Avevi già tutto, non ho aggiunto niente.'
+    const names = r.trips.length > 1 ? `${r.trips.slice(0, -1).join(', ')} e ${r.trips.at(-1)}` : r.trips[0]
+    return `Hai importato ${names}. ${r.photos ? `${plural(r.photos, 'foto nuova', 'foto nuove')}` : 'Nessuna foto nuova'}${r.present ? `, ${plural(r.present, 'altra', 'altre')} c'${r.present === 1 ? 'era' : 'erano'} già` : ''}.`
   }
 
   async function run(job: () => Promise<string | void>) {
@@ -366,7 +368,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       <p className="small">I file contengono viaggi, tappe, note, diario, percorsi e miniature.</p>
 
       <h2 className="section-title">Ripristino</h2>
-      <p className="small">Puoi importare un singolo viaggio o un backup completo, anche fatto su un altro telefono. Se un viaggio c'è già, si aggiorna.</p>
+      <p className="small">Puoi importare un singolo viaggio o un backup completo, anche fatto su un altro telefono. Se un viaggio c'è già, si aggiunge solo quello che manca, senza cambiare il resto.</p>
       <p className="small">Per unire il viaggio di chi era con te a uno dei tuoi, apri il tuo viaggio e scegli ⋯ › «Unisci un viaggio ricevuto».</p>
       <label className="btn ghost" aria-disabled={working}>
         Importa un viaggio o un backup

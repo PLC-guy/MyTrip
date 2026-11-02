@@ -13,6 +13,10 @@ const CLOSE_SPEED = 0.6
  * su e giù finché non si chiudeva l'app (visto due volte sull'iPhone, 28/10/2026).
  */
 let openSheets = 0
+/** Quanti fogli sono aperti: con un foglio aperto l'app non si ricarica da sola (update.ts). */
+export function sheetsOpen(): number {
+  return openSheets
+}
 /**
  * ⚠️ `overflow: hidden` sul body da solo NON ferma la pagina su iPhone: col
  * foglio «Nuovo viaggio», il diario o il nome del locale aperti (tastiera

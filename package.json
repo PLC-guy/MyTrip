@@ -2,7 +2,7 @@
   "name": "mytrip",
   "private": true,
   "license": "UNLICENSED",
-  "version": "0.26.2",
+  "version": "0.27.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

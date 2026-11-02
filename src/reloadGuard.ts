@@ -44,7 +44,15 @@ export function reloadLoopDetected(): boolean {
   return true
 }
 
-/** Toglie service worker e cache. ⚠️ Non tocca IndexedDB: i viaggi restano. */
+/**
+ * Toglie service worker e i file dell'app salvati. ⚠️ Non tocca IndexedDB: i
+ * viaggi restano. Restano anche mappe, stile della mappa e confini dei paesi
+ * (revisione di robustezza R5, 2/11/2026): cancellarle ad ogni ripartenza
+ * toglieva le mappe offline proprio quando servivano.
+ */
+/** Le cache della mappa e dei paesi, con i nomi di vite.config.ts. */
+const KEEP_CACHES = ['mappe', 'mappa-stile', 'paesi']
+
 export async function unregisterEverything(): Promise<void> {
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations()
@@ -52,6 +60,6 @@ export async function unregisterEverything(): Promise<void> {
   }
   if ('caches' in window) {
     const keys = await caches.keys()
-    await Promise.all(keys.map((key) => caches.delete(key)))
+    await Promise.all(keys.filter((key) => !KEEP_CACHES.includes(key)).map((key) => caches.delete(key)))
   }
 }

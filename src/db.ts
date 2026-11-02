@@ -282,9 +282,12 @@ export const colorName = (hex: string) => COLOR_NAMES[hex.toLowerCase()] ?? 'Col
 const OLD_COLORS = ['#E07A5F', '#3D8B85', '#8E6CB4', '#D4A03A', '#4A7BB7', '#C2577A', '#6A994E']
 
 export async function recolorTrips(): Promise<void> {
+  // `return false`: senza cambi Dexie non riscrive il viaggio (prima li
+  // riscriveva tutti a ogni avvio, svegliando la condivisione in diretta).
   await db.trips.toCollection().modify((t) => {
     const i = OLD_COLORS.indexOf(t.color)
-    if (i >= 0) t.color = TRIP_COLORS[i]
+    if (i < 0) return false
+    t.color = TRIP_COLORS[i]
   })
 }
 
@@ -384,8 +387,19 @@ if (import.meta.env.DEV) {
   db.trips.hook('updating', (mods) => warn(mods as Partial<Trip>))
 }
 
-/** Una volta: le miniature salvate come Blob prima della 0.15.0 diventano byte. */
+/**
+ * Una volta: le miniature salvate come Blob prima della 0.15.0 diventano byte.
+ * Dopo un giro completo senza Blob non si rifà più (revisione di robustezza S1,
+ * 2/11/2026): rileggeva a ogni avvio tutte le miniature dell'archivio.
+ */
+const THUMBS_OK = 'mytrip:miniature-in-byte'
 export async function convertThumbs(): Promise<void> {
+  try {
+    if (localStorage.getItem(THUMBS_OK)) return
+  } catch {
+    // ignorata di proposito: si controlla come prima
+  }
+  let clean = true
   const ids = await db.photos.toCollection().primaryKeys()
   for (let i = 0; i < ids.length; i += 20) {
     const raw = await db.photos.where('id').anyOf(ids.slice(i, i + 20)).raw().toArray()
@@ -396,6 +410,7 @@ export async function convertThumbs(): Promise<void> {
         todo.push([p.id, await p.thumb.arrayBuffer()])
       } catch {
         // Illeggibile adesso: si riprova al prossimo avvio.
+        clean = false
       }
     }
     if (todo.length) await db.transaction('rw', db.photos, () => Promise.all(todo.map(([id, bytes]) => db.photos.update(id, { thumb: asStored(bytes) }))))
@@ -407,11 +422,23 @@ export async function convertThumbs(): Promise<void> {
       await db.trips.update(t.id, { coverImage: asStored(bytes) })
     } catch {
       // Come sopra.
+      clean = false
     }
+  }
+  try {
+    if (clean) localStorage.setItem(THUMBS_OK, '1')
+  } catch {
+    // ignorata di proposito
   }
 }
 
-export async function mergeStops(intoId: string, fromId: string): Promise<void> {
+/**
+ * Unisce `fromId` in `intoId`. Se tutte e due hanno un locale, ne resta uno
+ * solo: `keepMeal` dice quale (revisione di robustezza R3, 2/11/2026: prima
+ * restava sempre quello di `intoId` e l'altro spariva col suo voto; ora lo
+ * sceglie l'utente).
+ */
+export async function mergeStops(intoId: string, fromId: string, keepMeal: 'into' | 'from' = 'into'): Promise<void> {
   await db.transaction('rw', db.stops, db.photos, async () => {
     const into = await db.stops.get(intoId)
     const from = await db.stops.get(fromId)
@@ -427,7 +454,7 @@ export async function mergeStops(intoId: string, fromId: string): Promise<void> 
       ...summary,
       note,
       star: into.star || from.star || undefined,
-      meal: into.meal ?? from.meal,
+      meal: keepMeal === 'from' ? (from.meal ?? into.meal) : (into.meal ?? from.meal),
       name: into.name ?? from.name,
       ...(startsEarlier ? { transport: from.transport, weather: undefined, weatherDone: undefined } : {}),
     })

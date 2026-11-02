@@ -96,6 +96,11 @@ export default function ShareSheet({ trip, onClose, leaving, swap }: { trip: Tri
             ) : (
               <>📡 In diretta · aggiornato {share.at ? fmtStamp(share.at) : ''}</>
             )}
+            {(() => {
+              // Foto rifiutate dal server perché troppo pesanti (sync.ts).
+              const n = Object.values(share.sent ?? {}).filter((size) => size < 0).length
+              return n > 0 && <p className="small" style={{ margin: '6px 0 0' }}>{n === 1 ? '1 foto non si può condividere perché è troppo pesante.' : `${n} foto non si possono condividere perché sono troppo pesanti.`}</p>
+            })()}
           </div>
           {progress}
           <div className="stack">
