@@ -16,8 +16,10 @@ const MAX_NIGHTS = 30
  * all'ultima tappa del giorno (OpenStreetMap, come i locali), dal più vicino,
  * oppure il nome scritto a mano. Si sceglie per quante notti di fila: l'app
  * compila da sola le sere successive.
+ * «Fino alla fine del viaggio» (richiesta dell'utente, 2/11/2026: viaggi con
+ * sempre lo stesso alloggio) sceglie in un tocco le notti fino all'ultimo giorno.
  */
-export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip; day: string; last: Stop; onClose: () => void }) {
+export default function LodgingSheet({ trip, day, last, lastDay, onClose }: { trip: Trip; day: string; last: Stop; lastDay: string; onClose: () => void }) {
   const current = trip.nights?.[day]
   const run = nightsInRow(trip.nights, day)
   const [nights, setNights] = useState(Math.max(1, run))
@@ -65,6 +67,8 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
   }
 
   const until = addDays(day, nights)
+  // Notti da questa sera all'ultimo giorno del viaggio (quel giorno si riparte).
+  const toEnd = Math.min(MAX_NIGHTS, Math.round((Date.parse(lastDay + 'T12:00:00Z') - Date.parse(day + 'T12:00:00Z')) / 86_400_000))
   const wider = radius < SLEEP_RADII[1] && (
     <button className="btn ghost small-btn" type="button" onClick={() => { setPlaces(undefined); setError(false); setRadius(SLEEP_RADII[1]) }}>
       Cerca fino a {SLEEP_RADII[1] / 1000} km
@@ -87,6 +91,11 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
       <p className="small" style={{ marginTop: 4 }}>
         Riparti {fmtDay(until + 'T12:00:00')}.{nights > 1 ? ' Le sere in mezzo si compilano da sole.' : ''}
       </p>
+      {toEnd > 1 && nights !== toEnd && (
+        <button type="button" className="btn ghost small-btn" onClick={() => setNights(toEnd)}>
+          Fino alla fine del viaggio · {toEnd} notti
+        </button>
+      )}
 
       {current && (
         <div className="meal-box">

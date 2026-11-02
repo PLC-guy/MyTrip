@@ -554,6 +554,8 @@ html[data-nav='back']::view-transition-new(root) { animation-name: nav-in-left; 
 .night-card { position: relative; display: grid; gap: 2px; width: 100%; margin-bottom: 10px; padding: 12px 14px; border: 0; border-radius: var(--radius); background: var(--card-alt); color: var(--ink); text-align: left; }
 .night-card b { font: var(--display-weight) 1.1rem/1.25 var(--display); }
 .night-card .note { font-size: 0.85rem; color: var(--muted); }
+/* «Stesso alloggio» della sera prima: la scelta più probabile, già piena come una scheda della notte. */
+.night-add.same { border-style: solid; border-color: transparent; background: var(--card-alt); color: var(--ink); }
 .nights-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .stepper { display: inline-flex; align-items: center; gap: 12px; }
 .stepper .btn { width: 44px; min-height: 40px; padding: 0; font-size: 1.2rem; }

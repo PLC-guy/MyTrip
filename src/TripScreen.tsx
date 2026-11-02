@@ -571,10 +571,21 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
             const lodging = trip.nights?.[d.day]
             const toNight = legTo.get(nightId(d.day))
             if (!lodging) {
-              return readOnly ? null : (
-                <button className="night-add" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>
-                  🛏 Dove hai dormito?
-                </button>
+              if (readOnly) return null
+              // La sera prima c'era un alloggio: si propone di restarci con un
+              // tocco (richiesta dell'utente, 2/11/2026). Stesso id: notti «di fila».
+              const before = trip.nights?.[addDays(d.day, -1)]
+              return (
+                <>
+                  {before && (
+                    <button className="night-add same" onClick={() => void db.trips.update(id, { nights: { ...trip.nights, [d.day]: before } })}>
+                      🛏 Stesso alloggio: {before.name}
+                    </button>
+                  )}
+                  <button className="night-add" onClick={() => setPanel({ kind: 'lodging', day: d.day })}>
+                    🛏 {before ? 'Altro alloggio' : 'Dove hai dormito?'}
+                  </button>
+                </>
               )
             }
             const stay = nightOfStay(trip.nights, d.day)
@@ -699,7 +710,7 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
       {panel.kind === 'lodging' && (() => {
         const today = days.find((d) => d.day === panel.day)
         const last = today?.stops.at(-1)
-        return last ? <LodgingSheet trip={trip} day={panel.day} last={last} onClose={() => setPanel({ kind: 'none' })} /> : null
+        return last ? <LodgingSheet trip={trip} day={panel.day} last={last} lastDay={days.at(-1)!.day} onClose={() => setPanel({ kind: 'none' })} /> : null
       })()}
 
       {panel.kind === 'diary' && (
