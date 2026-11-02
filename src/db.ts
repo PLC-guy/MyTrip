@@ -50,6 +50,8 @@ export interface Lodging {
   address?: string
   /** Scritto a mano: la posizione è quella dell'ultima tappa del giorno, non dell'alloggio. */
   approx?: boolean
+  /** Voto da 1 a 5, uguale in tutte le notti nello stesso alloggio (venues.ts). */
+  rating?: number
 }
 
 export type TripKind = 'piacere' | 'lavoro'

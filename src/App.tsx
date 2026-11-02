@@ -5,6 +5,7 @@ import TripScreen from './TripScreen'
 import SettingsScreen from './SettingsScreen'
 import StarsScreen from './StarsScreen'
 import MealsScreen from './MealsScreen'
+import LodgingsScreen from './LodgingsScreen'
 import SearchScreen from './SearchScreen'
 import CountriesScreen from './CountriesScreen'
 import ErrorBoundary from './ErrorBoundary'
@@ -26,6 +27,7 @@ export type Route =
   | { name: 'settings'; page?: SettingsPage }
   | { name: 'stars' }
   | { name: 'meals' }
+  | { name: 'lodgings' }
   | { name: 'search' }
   | { name: 'countries' }
   /** Link di un viaggio condiviso (sync.ts): la Home con «Segui un viaggio» già compilato. */
@@ -60,6 +62,7 @@ function readRoute(): Route {
   if (h === '#/impostazioni/tappe') return { name: 'settings', page: 'tappe' }
   if (h === '#/speciali') return { name: 'stars' }
   if (h === '#/mangiato') return { name: 'meals' }
+  if (h === '#/dormito') return { name: 'lodgings' }
   if (h === '#/cerca') return { name: 'search' }
   if (h === '#/paesi') return { name: 'countries' }
   if (h.startsWith('#/segui/')) return { name: 'follow', code: h.slice(8) }
@@ -71,6 +74,7 @@ function writeRoute(r: Route): string {
   if (r.name === 'settings') return r.page ? `#/impostazioni/${r.page}` : '#/impostazioni'
   if (r.name === 'stars') return '#/speciali'
   if (r.name === 'meals') return '#/mangiato'
+  if (r.name === 'lodgings') return '#/dormito'
   if (r.name === 'search') return '#/cerca'
   if (r.name === 'countries') return '#/paesi'
   if (r.name === 'follow') return `#/segui/${r.code}`
@@ -85,7 +89,7 @@ function writeRoute(r: Route): string {
  * Con la View Transitions API (Safari 18+): dove manca, il cambio è immediato
  * come prima. Lo «swipe indietro» di iOS non passa di qui: resta il suo.
  */
-const SIDE: Record<Route['name'], number> = { countries: -1, meals: -1, stars: -1, search: -1, home: 0, follow: 0, trip: 1, settings: 1 }
+const SIDE: Record<Route['name'], number> = { countries: -1, meals: -1, lodgings: -1, stars: -1, search: -1, home: 0, follow: 0, trip: 1, settings: 1 }
 /** Pagine interne delle Impostazioni: un passo più a destra delle Impostazioni stesse. */
 const place = (r: Route) => SIDE[r.name] + (r.name === 'settings' && r.page ? 0.5 : 0)
 
@@ -159,6 +163,7 @@ export default function App() {
         {route.name === 'settings' && <SettingsScreen page={route.page} go={go} />}
         {route.name === 'stars' && <StarsScreen go={go} />}
         {route.name === 'meals' && <MealsScreen go={go} />}
+        {route.name === 'lodgings' && <LodgingsScreen go={go} />}
         {route.name === 'search' && <SearchScreen go={go} />}
         {route.name === 'countries' && <CountriesScreen go={go} />}
         </main>

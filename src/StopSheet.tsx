@@ -11,6 +11,7 @@ import { thumbUrl } from './thumbUrl'
 import { describeWeather, weatherPending } from './weather'
 import { routesPending } from './routing'
 import { useProfile } from './profile'
+import { mealVenue, rateMeal } from './venues'
 
 interface Props {
   stop: Stop
@@ -168,8 +169,8 @@ export default function StopSheet({ stop, photos, color, readOnly, prev, next, o
                 aria-checked={stop.meal?.rating === n}
                 aria-label={`${n} su 5`}
                 className={(stop.meal?.rating ?? 0) >= n ? 'on' : ''}
-                // Toccare il voto già dato lo toglie.
-                onClick={() => void db.stops.update(stop.id, { meal: { ...stop.meal!, rating: stop.meal?.rating === n ? undefined : n } })}
+                // Toccare il voto già dato lo toglie. Vale per tutte le visite di questo locale (venues.ts).
+                onClick={() => void rateMeal(mealVenue({ ...stop, meal: stop.meal! }), stop.meal?.rating === n ? undefined : n)}
               >
                 ★
               </button>

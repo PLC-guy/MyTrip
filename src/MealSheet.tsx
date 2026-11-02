@@ -4,10 +4,12 @@ import { nearbyPlaces, RADII, type NearbyPlace } from './places'
 import Sheet from './Sheet'
 import MapsChooser from './MapsChooser'
 import { IconMap } from './icons'
+import { knownMealRating, rateMeal } from './venues'
 
 /**
  * «Dove hai mangiato?»: i locali vicini (OpenStreetMap), dal più vicino, oppure
- * il nome scritto a mano. Il voto già dato resta.
+ * il nome scritto a mano. Se il locale ha già un voto da un'altra visita prende
+ * quello, altrimenti resta il voto già dato (venues.ts: un voto per locale).
  * Si apre dall'icona 🍽️ di una foto (idea dell'utente, 28/10/2026): si cerca
  * attorno a QUELLA foto, la foto del piatto, più precisa del centro della tappa.
  * Il locale resta uno per tappa.
@@ -37,8 +39,11 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
     </button>
   )
 
-  const save = (meal: { name: string; kind?: string; lat?: number; lon?: number; address?: string }) => {
-    void db.stops.update(stop.id, { meal: { ...meal, rating: stop.meal?.rating, photoId: photo?.id ?? stop.meal?.photoId } })
+  const save = async (meal: { name: string; kind?: string; lat?: number; lon?: number; address?: string }) => {
+    const venue = { name: meal.name, lat: meal.lat ?? stop.lat, lon: meal.lon ?? stop.lon }
+    const rating = (await knownMealRating(venue)) ?? stop.meal?.rating
+    await db.stops.update(stop.id, { meal: { ...meal, rating, photoId: photo?.id ?? stop.meal?.photoId } })
+    if (rating != null) await rateMeal(venue, rating)
     onClose()
   }
 

@@ -1,16 +1,21 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, followedTripIds, stopTitle, type Photo, type Stop, type Trip } from './db'
+import { db, followedTripIds, stopTitle, type Meal, type Photo, type Stop, type Trip } from './db'
 import { fmtDay, plural } from './format'
 import { IconBack } from './icons'
 import MapView, { type MapPin } from './MapView'
 import { thumbUrl } from './thumbUrl'
 import type { Route } from './App'
+import { groupVenues, mealVenue, venueRating } from './venues'
 
+/** Un locale: la visita più recente lo rappresenta (foto, tappa, viaggio). */
 interface Row {
-  stop: Stop
+  stop: Stop & { meal: Meal }
   trip: Trip
   photo?: Photo
+  /** Quante volte ci si è mangiato, in tutti i viaggi. */
+  visits: number
+  rating?: number
 }
 
 /** Filtro per voto: «Tutti» o almeno N stelle. */
@@ -19,7 +24,8 @@ const RATINGS = [0, 3, 4, 5]
 /**
  * «Dove ho mangiato»: i locali di tutti i viaggi (tappe con `meal`), dal più
  * recente, su una mappa e in un elenco. Filtri per voto e per paese (richiesti
- * dall'utente, 28/10/2026).
+ * dall'utente, 28/10/2026). Ogni locale compare una volta sola, con un voto,
+ * anche se ci si è stati più volte (venues.ts, richiesta del 2/11/2026).
  */
 export default function MealsScreen({ go }: { go: (r: Route) => void }) {
   const [minRating, setMinRating] = useState(0)
@@ -28,14 +34,15 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
   const rows = useLiveQuery(async (): Promise<Row[]> => {
     const trips = new Map((await db.trips.toArray()).map((t) => [t.id, t]))
     const skip = await followedTripIds()
-    const meals = (await db.stops.toArray()).filter((s) => s.meal && !skip.has(s.tripId)).sort((a, b) => b.start - a.start)
+    const meals = (await db.stops.toArray())
+      .filter((s): s is Stop & { meal: Meal } => !!s.meal && !skip.has(s.tripId) && trips.has(s.tripId))
+      .sort((a, b) => b.start - a.start)
     const out: Row[] = []
-    for (const stop of meals) {
-      const trip = trips.get(stop.tripId)
-      if (!trip) continue
+    for (const visits of groupVenues(meals, mealVenue)) {
+      const stop = visits[0]
       // La foto del piatto se c'è, altrimenti la prima della tappa.
-      const photo = (stop.meal?.photoId ? await db.photos.get(stop.meal.photoId) : undefined) ?? (await db.photos.where('stopId').equals(stop.id).sortBy('time'))[0]
-      out.push({ stop, trip, photo })
+      const photo = (stop.meal.photoId ? await db.photos.get(stop.meal.photoId) : undefined) ?? (await db.photos.where('stopId').equals(stop.id).sortBy('time'))[0]
+      out.push({ stop, trip: trips.get(stop.tripId)!, photo, visits: visits.length, rating: venueRating(visits.map((s) => s.meal.rating)) })
     }
     return out
   })
@@ -48,7 +55,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
   }, [rows])
 
   const shown = useMemo(
-    () => (rows ?? []).filter((r) => (r.stop.meal?.rating ?? 0) >= minRating && (!country || r.stop.countryCode === country)),
+    () => (rows ?? []).filter((r) => (r.rating ?? 0) >= minRating && (!country || r.stop.countryCode === country)),
     [rows, minRating, country],
   )
   const pins = useMemo<MapPin[]>(
@@ -118,7 +125,7 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
             {shown.length ? plural(shown.length, 'locale', 'locali') : 'Nessun locale con questi filtri'}
           </p>
           {shown.map((r) => {
-            const meal = r.stop.meal!
+            const meal = r.stop.meal
             return (
               <button key={r.stop.id} className="stop compact" onClick={() => open(r)}>
                 {r.photo && <img className="thumb" src={thumbUrl(r.photo)} alt="" />}
@@ -128,7 +135,8 @@ export default function MealsScreen({ go }: { go: (r: Route) => void }) {
                   </span>
                   <span className="meta" style={{ display: 'block' }}>
                     {meal.kind ? `${meal.kind} · ` : ''}
-                    {meal.rating ? <span className="meal-stars">{'★'.repeat(meal.rating)}</span> : 'senza voto'}
+                    {r.rating ? <span className="meal-stars">{'★'.repeat(r.rating)}</span> : 'senza voto'}
+                    {r.visits > 1 ? ` · ${r.visits} visite` : ''}
                   </span>
                   <span className="meta" style={{ display: 'block' }}>
                     <span className="dot" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: r.trip.color, marginRight: 5 }} />

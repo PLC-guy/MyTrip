@@ -54,7 +54,8 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
   const input = useRef<HTMLInputElement>(null)
   /** Quando si è aperto il selettore: per sapere quanto ha impiegato iOS a consegnare le foto. */
   const pickedAt = useRef<number | undefined>(undefined)
-  const [panel, setPanel] = useState<Panel>({ kind: 'none' })
+  // Aperto da «Dove ho dormito» su una notte: si apre il suo pernottamento.
+  const [panel, setPanel] = useState<Panel>(initialStop && isNight(initialStop) ? { kind: 'lodging', day: nightDay(initialStop) } : { kind: 'none' })
   /**
    * Scambio animato fra due fogli (richiesta dell'utente, 30/10/2026): dal menu ⋯
    * a condivisione, nome e tipo, copertina o colore il menu scende e l'altro sale; scelto, scende e il
@@ -583,7 +584,10 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
                   🛏 Notte{lodging.kind ? ` · ${lodging.kind}` : ''}
                   {stay.of > 1 ? ` · notte ${stay.n} di ${stay.of}` : ''}
                 </span>
-                <b>{lodging.name}</b>
+                <b>
+                  {lodging.name}
+                  {lodging.rating ? <span className="meal-stars"> {'★'.repeat(lodging.rating)}</span> : null}
+                </b>
                 {lodging.approx && <span className="note">Posizione indicativa: quella dell'ultima tappa del giorno.</span>}
               </>
             )

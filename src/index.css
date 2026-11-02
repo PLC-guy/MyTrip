@@ -12,7 +12,11 @@
   color-scheme: light;
   --bg: #f5f0e6; /* calce */
   --card: #dce6d5; /* scheda verde tè chiaro */
-  --card-alt: #d9e3ef; /* scheda dei viaggi seguiti: azzurro chiaro */
+  /* Scheda secondaria (viaggi seguiti, pernottamenti): un colore della palette
+     del tema, diverso da --card e da --warm. ⚠️ Fino alla 0.22.0 i tre temi
+     avevano tre azzurri quasi uguali e sembrava un colore fisso (osservazione
+     dell'utente, 2/11/2026). Qui: azzurro, come la linea blu della cronologia. */
+  --card-alt: #d9e3ef;
   --paper: #fbf8f1; /* caselle di testo */
   --ink: #1c2b24;
   --muted: #4a5750;
@@ -37,7 +41,7 @@
 :root[data-theme='terracotta'] {
   --bg: #f6ede1;
   --card: #ecdac5;
-  --card-alt: #d6e3e9;
+  --card-alt: #dfe3c8; /* verde ulivo chiaro, accanto a sabbia e terracotta */
   --paper: #fdf8f1;
   --ink: #33221a;
   --muted: #6a5548;
@@ -58,7 +62,7 @@
 :root[data-theme='moderno'] {
   --bg: #f3f4f7;
   --card: #e4e7ef;
-  --card-alt: #d8ecef;
+  --card-alt: #dbd6f6; /* lavanda: l'indaco dell'accento, schiarito */
   --paper: #ffffff;
   --ink: #141824;
   --muted: #586070;
@@ -243,6 +247,8 @@ img { display: block; }
 .star { color: var(--star); }
 .stop.compact { display: flex; gap: 12px; align-items: center; }
 .stop .thumb { width: 56px; height: 56px; border-radius: 4px; object-fit: cover; flex: none; background: var(--line); }
+/* «Dove ho dormito»: niente foto dell'alloggio, al suo posto 🛏 sul colore delle schede degli alloggi. */
+.stop .lodging-thumb { display: grid; place-items: center; font-size: 1.6rem; background: var(--card-alt); }
 .stop .body { flex: 1; min-width: 0; }
 .stop .place { font: var(--display-weight) 1.15rem/1.25 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

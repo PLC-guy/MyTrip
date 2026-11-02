@@ -6,6 +6,7 @@ import { fmtDay } from './format'
 import Sheet from './Sheet'
 import MapsChooser from './MapsChooser'
 import { IconMap } from './icons'
+import { knownLodgingRating, rateLodging } from './venues'
 
 /** Notti di fila che si possono segnare in una volta. */
 const MAX_NIGHTS = 30
@@ -55,8 +56,13 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
   }
 
   // Lo stesso posto già scelto tiene il suo id: le notti restano «di fila».
-  const pick = (p: { name: string; kind?: string; lat: number; lon: number; address?: string; approx?: boolean }) =>
-    void write({ id: current && current.name === p.name ? current.id : newId(), ...p }, nights)
+  // Il voto: quello già dato a questo alloggio in altre notti o altri viaggi (venues.ts).
+  const pick = async (p: { name: string; kind?: string; lat: number; lon: number; address?: string; approx?: boolean }) => {
+    const same = current && current.name === p.name
+    const rating = (await knownLodgingRating(p)) ?? (same ? current.rating : undefined)
+    await write({ id: same ? current.id : newId(), ...p, rating }, nights)
+    if (rating != null) await rateLodging(p, rating)
+  }
 
   const until = addDays(day, nights)
   const wider = radius < SLEEP_RADII[1] && (
@@ -90,6 +96,21 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
               <span className="k">{[current.kind, current.address].filter(Boolean).join(' · ')}</span>
             </span>
           </div>
+          {/* Un voto per alloggio: vale per tutte le notti lì, anche in altri viaggi. */}
+          <div className="rating" role="radiogroup" aria-label="Voto">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                role="radio"
+                aria-checked={current.rating === n}
+                aria-label={`${n} su 5`}
+                className={(current.rating ?? 0) >= n ? 'on' : ''}
+                onClick={() => void rateLodging(current, current.rating === n ? undefined : n)}
+              >
+                ★
+              </button>
+            ))}
+          </div>
           <div className="stack">
             {nights !== run && <button className="btn" onClick={() => void write(current, nights)}>Salva {nights === 1 ? '1 notte' : `${nights} notti`}</button>}
             {!searching && <button className="btn ghost" onClick={() => setSearching(true)}>Cambia alloggio</button>}
@@ -114,7 +135,7 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
               <div className="list pick-list" style={{ marginTop: 10 }}>
                 {places.map((p) => (
                   <div key={`${p.name}|${p.lat}|${p.lon}`} className={`meal-row${current?.name === p.name ? ' on' : ''}`}>
-                    <button className="meal-pick" onClick={() => pick({ name: p.name, kind: p.kind, lat: p.lat!, lon: p.lon!, address: p.address })}>
+                    <button className="meal-pick" onClick={() => void pick({ name: p.name, kind: p.kind, lat: p.lat!, lon: p.lon!, address: p.address })}>
                       <span className="pick-text">
                         <b>{p.name}</b>
                         <span className="k">
@@ -137,7 +158,7 @@ export default function LodgingSheet({ trip, day, last, onClose }: { trip: Trip;
             onSubmit={(e) => {
               e.preventDefault()
               // Nome a mano: la posizione non si conosce, si usa quella dell'ultima tappa.
-              if (name.trim()) pick({ name: name.trim(), lat: last.lat, lon: last.lon, address: last.place, approx: true })
+              if (name.trim()) void pick({ name: name.trim(), lat: last.lat, lon: last.lon, address: last.place, approx: true })
             }}
           >
             <input className="field" value={name} maxLength={80} aria-label="Nome dell'alloggio" placeholder={places?.length ? "Non è nell'elenco? Scrivi il nome" : "Scrivi il nome dell'alloggio"} onChange={(e) => setName(e.target.value)} />

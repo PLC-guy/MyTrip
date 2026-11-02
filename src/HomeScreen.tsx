@@ -325,6 +325,9 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
           <button onClick={() => go({ name: 'meals' })}>
             <span aria-hidden="true">🍽️</span> Locali
           </button>
+          <button onClick={() => go({ name: 'lodgings' })}>
+            <span aria-hidden="true">🛏</span> Alloggi
+          </button>
           <button onClick={() => go({ name: 'stars' })}>
             <IconStar /> Speciali
           </button>
