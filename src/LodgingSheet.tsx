@@ -177,7 +177,7 @@ export default function LodgingSheet({ trip, day, last, lastDay, onClose }: { tr
           </form>
         </>
       )}
-      {peek && <MapsChooser target={{ name: peek.name, lat: peek.lat!, lon: peek.lon!, address: peek.address, search: true }} onClose={() => setPeek(undefined)} />}
+      {peek && <MapsChooser target={{ name: peek.name, lat: peek.lat!, lon: peek.lon!, address: peek.address ?? last.place, search: true }} onClose={() => setPeek(undefined)} />}
     </Sheet>
   )
 }

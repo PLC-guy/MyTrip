@@ -98,7 +98,7 @@ export default function MealSheet({ stop, photo, onClose }: { stop: Stop; photo?
           Salva questo nome
         </button>
       </form>
-      {peek && <MapsChooser target={{ name: peek.name, lat: peek.lat!, lon: peek.lon!, address: peek.address, search: true }} onClose={() => setPeek(undefined)} />}
+      {peek && <MapsChooser target={{ name: peek.name, lat: peek.lat!, lon: peek.lon!, address: peek.address ?? stop.place, search: true }} onClose={() => setPeek(undefined)} />}
     </Sheet>
   )
 }

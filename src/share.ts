@@ -20,12 +20,18 @@ const coords = (t: MapTarget) => `${t.lat.toFixed(6)},${t.lon.toFixed(6)}`
 export const appleMapsUrl = (t: MapTarget) => `https://maps.apple.com/?ll=${coords(t)}&q=${encodeURIComponent(t.name)}`
 
 /**
- * Google Maps. ⚠️ Il link di Google non accetta un centro per la ricerca: per un
- * locale si cerca «nome, indirizzo» (o «nome, località»), per una tappa il
- * punto esatto.
+ * Google Maps. Per una tappa il punto esatto. Per un locale o un alloggio si
+ * cerca «nome, indirizzo» ATTORNO al posto: il link ufficiale (`?api=1&query=`)
+ * non accetta un centro e, senza indirizzo (in Cambogia OpenStreetMap spesso
+ * non lo ha), «The Cliff» trovava un hotel omonimo in Puglia (segnalato
+ * dall'utente, 2/11/2026). Il link `/maps/search/<testo>/@lat,lon,17z` cerca
+ * vicino a quel punto. ⚠️ Non è il formato documentato: se l'app di Google
+ * smettesse di rispettare il centro, tornare a `?api=1` con la località nel testo.
  */
 export const googleMapsUrl = (t: MapTarget) =>
-  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.search ? [t.name, t.address].filter(Boolean).join(', ') : coords(t))}`
+  t.search
+    ? `https://www.google.com/maps/search/${encodeURIComponent([t.name, t.address].filter(Boolean).join(', '))}/@${coords(t)},17z`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coords(t))}`
 
 /** La tappa come destinazione: il locale, se c'è, altrimenti il punto della tappa. */
 export function stopTarget(stop: Stop): MapTarget {

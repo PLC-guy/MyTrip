@@ -232,7 +232,9 @@ img { display: block; }
   padding: 4px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
 }
 .venue-map .map { height: 30dvh; min-height: 200px; }
-.venue { border-radius: var(--radius); margin-bottom: 10px; }
+/* flow-root: il margine sotto «Apri la tappa» resta dentro la scheda invece di
+   uscirne (il pulsante toccava il bordo, segnalato dall'utente). */
+.venue { display: flow-root; border-radius: var(--radius); margin-bottom: 10px; }
 .venue > .stop.compact { margin-bottom: 0; }
 .venue.on { box-shadow: 0 0 0 2px var(--accent); background: var(--card); }
 .venue.on > .stop.compact { background: transparent; }
