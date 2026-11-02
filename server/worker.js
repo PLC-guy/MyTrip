@@ -184,21 +184,50 @@ export default {
 
   /** Ogni 15 minuti: riepiloghi giornalieri all'ora scelta e novità rimaste in attesa. */
   async scheduled(_event, env) {
-    const ids = (await env.KV.get('subs-index', 'json')) ?? []
-    const left = []
-    for (const id of ids) {
-      // Un viaggio con iscrizioni guaste non deve fermare gli altri.
-      try {
-        const subs = await env.KV.get(`${id}/subs`, 'json')
-        if (!subs || Object.keys(subs).length === 0) continue
-        left.push(id)
-        if (await flush(env, id, subs, false)) await env.KV.put(`${id}/subs`, JSON.stringify(subs))
-      } catch {
-        left.push(id)
-      }
+    let problem
+    try {
+      await sendSummaries(env)
+      await counter(env).alive()
+    } catch (e) {
+      problem = e
     }
-    if (left.length !== ids.length) await env.KV.put('subs-index', JSON.stringify(left))
+    await heartbeat(env, problem)
   },
+}
+
+/** Riepiloghi giornalieri all'ora scelta e novità rimaste in attesa. */
+async function sendSummaries(env) {
+  const ids = (await env.KV.get('subs-index', 'json')) ?? []
+  const left = []
+  for (const id of ids) {
+    // Un viaggio con iscrizioni guaste non deve fermare gli altri.
+    try {
+      const subs = await env.KV.get(`${id}/subs`, 'json')
+      if (!subs || Object.keys(subs).length === 0) continue
+      left.push(id)
+      if (await flush(env, id, subs, false)) await env.KV.put(`${id}/subs`, JSON.stringify(subs))
+    } catch {
+      left.push(id)
+    }
+  }
+  if (left.length !== ids.length) await env.KV.put('subs-index', JSON.stringify(left))
+}
+
+/**
+ * SALUTE DEL SERVER (richiesta dell'utente, 2/11/2026): a ogni giro del cron,
+ * ogni 15 minuti, si avvisa healthchecks.io (segreto `HC_URL`, l'indirizzo del
+ * controllo). Se il giro va bene parte un «tutto a posto», se KV o il contatore
+ * danno errore parte «/fail» con l'errore. Se Cloudflare è giù non parte niente:
+ * healthchecks.io se ne accorge dal silenzio e avvisa l'utente su Telegram.
+ * Senza il segreto non fa niente.
+ */
+async function heartbeat(env, problem) {
+  if (!env.HC_URL) return
+  try {
+    await fetch(problem ? `${env.HC_URL}/fail` : env.HC_URL, { method: 'POST', body: problem ? String(problem?.message ?? problem).slice(0, 500) : 'ok' })
+  } catch {
+    // healthchecks.io non raggiungibile: il silenzio basta a farlo scattare.
+  }
 }
 
 // --- Notifiche ---------------------------------------------------------------
@@ -475,6 +504,12 @@ export class Contatore extends DurableObject {
     this.sql.exec('INSERT INTO condivisioni VALUES (?, ?, ?, NULL) ON CONFLICT(id) DO UPDATE SET ultimo = excluded.ultimo', id, now, now)
   }
 
+  /** Per il controllo di salute: risponde se l'archivio del contatore funziona. */
+  alive() {
+    this.sql.exec('SELECT 1').toArray()
+    return true
+  }
+
   shareEnded(id) {
     this.sql.exec('UPDATE condivisioni SET fine = ? WHERE id = ?', Date.now(), id)
   }
@@ -536,7 +571,8 @@ async function load() {
     }
     h += '</table>'
   }
-  h += '<p class="small">Condivisioni interrotte: ' + d.revoked + '. In rosso quelle ferme da più di 14 giorni. «Notifiche» conta chi segue con le notifiche accese, chi segue senza notifiche non si vede. Un trattino vuol dire nessun aggiornamento da quando c’è il contatore.</p>'
+  h += '<p class="small">In rosso quelle ferme da più di 14 giorni. «Notifiche» conta chi segue con le notifiche accese, chi segue senza notifiche non si vede. Un trattino vuol dire nessun aggiornamento da quando c’è il contatore.</p>'
+  h += '<h2>Condivisioni interrotte: ' + d.revoked + '</h2><p class="small">Non sono nella tabella qui sopra. Foto e viaggio sono già stati cancellati dal server, resta solo il codice bloccato perché nessuno possa riusarlo.</p>'
   out.innerHTML = h
 }
 load().catch(() => { when.textContent = 'Il server non risponde.' })
