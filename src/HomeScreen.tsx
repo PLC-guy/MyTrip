@@ -13,7 +13,7 @@ import Sheet from './Sheet'
 import { thumbUrl } from './thumbUrl'
 import DayNav from './DayNav'
 import FollowSheet from './FollowSheet'
-import { backupDue, describeBackupAge, photosToKeep, runBackup, snoozeBackup, useBackupState } from './backupReminder'
+import { backupAgeDays, backupDue, describeBackupAge, endedSinceBackup, photosToKeep, REMIND_DAYS, runBackup, snoozeBackup, useBackupState } from './backupReminder'
 import type { Route } from './App'
 
 const KIND_KEY = 'mytrip:home-kind'
@@ -63,6 +63,12 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
   const backup = useBackupState()
   const photoCount = useLiveQuery(photosToKeep)
   const due = photoCount != null && backupDue(backup, photoCount)
+  const ended = useLiveQuery(() => endedSinceBackup(backup), [backup.at]) ?? []
+  // Il motivo si dice solo quando il backup non è vecchio: altrimenti basta l'età.
+  const endedNote =
+    ended.length > 0 && (backupAgeDays(backup) ?? REMIND_DAYS) < REMIND_DAYS
+      ? `${[ended.slice(0, -1).map((n) => `«${n}»`).join(', '), `«${ended[ended.length - 1]}»`].filter(Boolean).join(' e ')} ${ended.length === 1 ? 'non è più condiviso, le sue foto' : 'non sono più condivisi, le loro foto'} ora sono solo su questo telefono.`
+      : undefined
 
   async function doBackup() {
     setBackingUp(true)
@@ -347,6 +353,7 @@ export default function HomeScreen({ go, follow }: { go: (r: Route) => void; fol
           <button className="small-link muted" onClick={snoozeBackup}>
             Più tardi
           </button>
+          {endedNote && <p>{endedNote}</p>}
         </div>
       )}
 

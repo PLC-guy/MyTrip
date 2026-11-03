@@ -234,11 +234,6 @@ export interface Share {
   notify?: { mode: 'each' | 'daily'; hour: number; sub: string }
   /** Solo owner: foto nuove il cui avviso a chi segue aspetta i nomi dei luoghi (sync.ts). */
   note?: { ids: string[]; since: number }
-  /**
-   * Solo owner: ripresa da un backup, quindi `sent` può non coincidere con il
-   * server. Il primo invio controlla l'indice sul server (sync.ts).
-   */
-  recheck?: boolean
 }
 
 export const db = new Dexie('mytrip') as Dexie & {

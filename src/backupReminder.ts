@@ -94,6 +94,19 @@ export async function photosToKeep(): Promise<number> {
   return db.photos.where('tripId').anyOf(trips).count()
 }
 
+/**
+ * Viaggi seguiti la cui condivisione è finita dopo l'ultimo backup: le loro
+ * foto ora contano (vedi sopra) e possono far comparire il promemoria anche col
+ * backup di oggi. La Home lo spiega, altrimenti sembra un errore (segnalazione
+ * dell'utente, 3/11/2026).
+ */
+export async function endedSinceBackup(state: BackupState): Promise<string[]> {
+  if (!state.at) return []
+  const since = Date.parse(state.at)
+  const ended = (await db.shares.where('role').equals('follow').toArray()).filter((s) => s.ended && s.ended > since)
+  return (await db.trips.bulkGet(ended.map((s) => s.tripId))).flatMap((t) => (t ? [t.name] : []))
+}
+
 export function backupDue(state: BackupState, photos: number, now = new Date()): boolean {
   if (photos === 0) return false
   if (state.snoozeUntil && new Date(state.snoozeUntil) > now) return false

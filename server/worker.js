@@ -120,6 +120,12 @@ export default {
       }
       if ((m = new RegExp(`^/s/${ID}/sub$`).exec(path)) && req.method === 'POST') return reply(await subscribe(env, m[1], await req.json()))
       if ((m = new RegExp(`^/s/${ID}/sub/([A-Za-z0-9_-]{43})$`).exec(path)) && req.method === 'DELETE') return reply(await unsubscribe(env, m[1], m[2]))
+      // «Ci sono ancora» del telefono che condivide (vedi SCADENZA più sotto).
+      if ((m = new RegExp(`^/s/${ID}/vivo$`).exec(path)) && req.method === 'POST') {
+        if (!(await checkAuth(env, m[1], req.headers.get('Authorization'), false))) return reply('non autorizzato', 403)
+        await counter(env).shareSeen(m[1])
+        return reply('ok')
+      }
       if ((m = new RegExp(`^/s/${ID}/n$`).exec(path)) && req.method === 'POST') {
         if (!(await checkAuth(env, m[1], req.headers.get('Authorization'), false))) return reply('non autorizzato', 403)
         const { c } = await req.json()
@@ -165,15 +171,7 @@ export default {
         await env.KV.delete(key)
         return reply('ok')
       }
-      let cursor
-      do {
-        const page = await env.KV.list({ prefix: `${id}/`, cursor })
-        await Promise.all(page.keys.map((k) => env.KV.delete(k.name)))
-        cursor = page.list_complete ? undefined : page.cursor
-      } while (cursor)
-      // L'id resta revocato per sempre (S9): nessuno può ricrearlo.
-      await env.KV.put(`a/${id}`, REVOKED)
-      ctx.waitUntil(counter(env).shareEnded(id).catch(() => {}))
+      await removeShare(env, id, Infinity)
       return reply('ok')
     } catch (e) {
       // Niente dettagli interni nella risposta.
@@ -183,16 +181,84 @@ export default {
   },
 
   /** Ogni 15 minuti: riepiloghi giornalieri all'ora scelta e novità rimaste in attesa. */
-  async scheduled(_event, env) {
+  async scheduled(event, env) {
     let problem
     try {
       await sendSummaries(env)
+      // Una volta al giorno, alle 3 (ora di Greenwich).
+      const at = new Date(event.scheduledTime)
+      if (at.getUTCHours() === 3 && at.getUTCMinutes() < 15) await expireShares(env)
       await counter(env).alive()
     } catch (e) {
       problem = e
     }
     await heartbeat(env, problem)
   },
+}
+
+/**
+ * Toglie dal server un viaggio condiviso (iscrizioni comprese). PRIMA si chiude
+ * l'id per sempre (S9: nessuno può ricrearlo), poi si cancella. Al massimo
+ * `budget` cancellazioni: se non bastano, il resto lo finisce il giro del
+ * giorno dopo (`da_pulire` nel contatore). ⚠️ Chiudere per ultimo lasciava, fra
+ * un giorno e l'altro, un link ancora scrivibile con il viaggio mezzo
+ * cancellato (prova del 3/11/2026). Restituisce le cancellazioni fatte, o -1 se
+ * il viaggio non è stato tolto del tutto.
+ */
+async function removeShare(env, id, budget) {
+  if ((await env.KV.get(`a/${id}`)) !== REVOKED) await env.KV.put(`a/${id}`, REVOKED)
+  let done = 0
+  let cursor
+  do {
+    const page = await env.KV.list({ prefix: `${id}/`, cursor })
+    if (done + page.keys.length > budget) {
+      await Promise.all(page.keys.slice(0, Math.max(0, budget - done)).map((k) => env.KV.delete(k.name)))
+      await counter(env).shareEnded(id, false)
+      return -1
+    }
+    await Promise.all(page.keys.map((k) => env.KV.delete(k.name)))
+    done += page.keys.length
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  await counter(env).shareEnded(id, true).catch(() => {})
+  return done
+}
+
+/**
+ * ⚠️ SCADENZA DEI LINK ABBANDONATI (scelta dell'utente, 3/11/2026)
+ *
+ * Un viaggio condiviso il cui telefono sparisce (perso, rotto, app cancellata
+ * senza eliminare il viaggio) restava sul server per sempre: il permesso di
+ * scrittura c'era solo su quel telefono, e un import non riprende mai la
+ * condivisione. Chiuderla da un altro telefono non va: si chiuderebbe il link
+ * di chi è ancora in viaggio. Quindi il telefono che condivide si fa vivo a
+ * ogni apertura dell'app (`POST <id>/vivo`, nel contatore: niente scritture di
+ * KV), e un link senza segni di vita per EXPIRE_DAYS giorni si chiude da solo.
+ * Chi segue vede «non è più condiviso» e tiene ciò che ha; chi viaggia può
+ * ricondividere da capo. Le condivisioni di prima del contatore (0.28.0) senza
+ * date entrano nel contatore al primo giro: da lì parte il conto.
+ * Le cancellazioni di KV sono 1000 al giorno anche per l'uso normale: al
+ * massimo EXPIRE_BUDGET al giorno, il resto il giorno dopo.
+ */
+const EXPIRE_DAYS = 30
+const EXPIRE_BUDGET = 300
+
+async function expireShares(env) {
+  const open = []
+  let cursor
+  do {
+    const page = await env.KV.list({ prefix: 'a/', cursor })
+    for (const k of page.keys) if ((await env.KV.get(k.name)) !== REVOKED) open.push(k.name.slice(2))
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  // Prima i viaggi rimasti a metà dal giro di ieri, poi quelli scaduti oggi.
+  const stale = await counter(env).stale(open, Date.now() - EXPIRE_DAYS * 86_400_000)
+  let budget = EXPIRE_BUDGET
+  for (const id of stale) {
+    const done = await removeShare(env, id, budget)
+    if (done < 0) break
+    budget -= done
+  }
 }
 
 /** Riepiloghi giornalieri all'ora scelta e novità rimaste in attesa. */
@@ -484,6 +550,8 @@ export class Contatore extends DurableObject {
     this.sql = ctx.storage.sql
     this.sql.exec('CREATE TABLE IF NOT EXISTS telefoni (id TEXT PRIMARY KEY, primo INTEGER, ultimo INTEGER, versione TEXT, modo TEXT, sistema TEXT)')
     this.sql.exec('CREATE TABLE IF NOT EXISTS condivisioni (id TEXT PRIMARY KEY, primo INTEGER, ultimo INTEGER, fine INTEGER)')
+    // Viaggi chiusi ma non ancora cancellati del tutto (SCADENZA, 3/11/2026).
+    this.sql.exec('CREATE TABLE IF NOT EXISTS da_pulire (id TEXT PRIMARY KEY)')
   }
 
   ping(t) {
@@ -510,8 +578,24 @@ export class Contatore extends DurableObject {
     return true
   }
 
-  shareEnded(id) {
-    this.sql.exec('UPDATE condivisioni SET fine = ? WHERE id = ?', Date.now(), id)
+  /** `clean` = sul server non resta niente; altrimenti il giro di domani continua. */
+  shareEnded(id, clean = true) {
+    this.sql.exec('UPDATE condivisioni SET fine = ? WHERE id = ? AND fine IS NULL', Date.now(), id)
+    if (clean) this.sql.exec('DELETE FROM da_pulire WHERE id = ?', id)
+    else this.sql.exec('INSERT INTO da_pulire VALUES (?) ON CONFLICT(id) DO NOTHING', id)
+  }
+
+  /**
+   * Da togliere oggi: prima i viaggi chiusi ma non ancora cancellati del tutto,
+   * poi quelli aperti (`open`, da KV) senza segni di vita da prima di `before`.
+   * Quelli aperti che il contatore non conosce entrano adesso.
+   */
+  stale(open, before) {
+    const now = Date.now()
+    for (const id of open) this.sql.exec('INSERT INTO condivisioni VALUES (?, ?, ?, NULL) ON CONFLICT(id) DO NOTHING', id, now, now)
+    const old = new Set(this.sql.exec('SELECT id FROM condivisioni WHERE fine IS NULL AND ultimo < ?', before).toArray().map((r) => r.id))
+    const half = this.sql.exec('SELECT id FROM da_pulire').toArray().map((r) => r.id)
+    return [...half, ...open.filter((id) => old.has(id))]
   }
 
   report() {

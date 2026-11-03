@@ -933,8 +933,14 @@ export default function TripScreen({ id, initialStop, go }: { id: string; initia
           <p className="small">
             {readOnly
               ? 'Il viaggio sparisce da questo telefono. Chi lo condivide non perde niente.'
-              : `Si cancellano dall'app ${plural(data.stops.length, 'tappa', 'tappe')} e ${plural(data.photos.length, 'miniatura', 'miniature')}. Le foto originali nella galleria non si toccano. Se vuoi tenerne una copia, prima esportalo da Impostazioni › Backup e ripristino.${share ? ' Chi lo segue non riceverà più novità.' : ''}`}
+              : `Si cancellano dall'app ${plural(data.stops.length, 'tappa', 'tappe')} e ${plural(data.photos.length, 'miniatura', 'miniature')}. Le foto originali nella galleria non si toccano. Se vuoi tenerne una copia, prima esportalo da Impostazioni › Backup e ripristino.`}
           </p>
+          {/* Avviso a parte (scelta dell'utente, 3/11/2026): la condivisione non torna con un backup. */}
+          {!readOnly && share?.role === 'owner' && (
+            <p className="note-box warm">
+              È condiviso in diretta. Eliminandolo smetti di condividerlo e chi lo segue non riceverà più novità.
+            </p>
+          )}
           <div className="stack">
             <button
               className="btn danger"

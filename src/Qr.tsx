@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import qrcode from 'qrcode-generator'
 
 /**
@@ -31,10 +32,20 @@ export function QrCode({ text }: { text: string }) {
   )
 }
 
-/** Fotocamera che cerca un QR code; `onCode` riceve il testo letto, poi la fotocamera si spegne. */
-export function QrScanner({ onCode }: { onCode: (text: string) => void }) {
+/**
+ * Fotocamera che cerca un QR code; `onCode` riceve il testo letto, poi la fotocamera si spegne.
+ * ⚠️ A TUTTO SCHERMO (segnalazione dell'utente, 3/11/2026): dentro il foglio la
+ * vista stava in fondo allo schermo, e si guardava in basso mentre il telefono
+ * puntava in avanti. Come Fotocamera e Wallet dell'iPhone: vista intera,
+ * riquadro al centro, «Chiudi» in basso dove arriva il pollice. Sta in un
+ * portale sopra il foglio, che resta aperto sotto.
+ */
+export function QrScanner({ onCode, onClose }: { onCode: (text: string) => void; onClose: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
+  const close = useRef<HTMLButtonElement>(null)
   const [error, setError] = useState<string>()
+
+  useEffect(() => close.current?.focus(), [])
 
   useEffect(() => {
     let stream: MediaStream | undefined
@@ -90,9 +101,21 @@ export function QrScanner({ onCode }: { onCode: (text: string) => void }) {
     }
   }, [onCode])
 
-  return (
-    <div className="qr-scanner">
-      {error ? <p className="note-box warm" style={{ margin: 0 }}>{error}</p> : <video ref={video} playsInline muted />}
-    </div>
+  return createPortal(
+    <div className="qr-scanner" role="dialog" aria-modal="true" aria-label="Inquadra il QR code">
+      {error ? (
+        <p className="note-box warm qr-error">{error}</p>
+      ) : (
+        <>
+          <video ref={video} playsInline muted aria-hidden="true" />
+          <div className="qr-frame" aria-hidden="true" />
+          <p className="qr-hint">Inquadra il QR code di chi viaggia</p>
+        </>
+      )}
+      <button ref={close} className="btn qr-close" onClick={onClose}>
+        Chiudi la fotocamera
+      </button>
+    </div>,
+    document.body,
   )
 }

@@ -34,9 +34,11 @@ export interface ExportFile {
   /** Miniature ridotte per condividere (shareThumb.ts): all'import non sostituiscono quelle già presenti. */
   lite?: boolean
   /**
-   * Solo nel backup completo (dalla 0.14.0): i viaggi condivisi e seguiti, con il
-   * permesso di scrittura. Così, ripristinando su un telefono nuovo, si continua
-   * ad aggiornare il viaggio condiviso. ⚠️ Mai negli export da mandare ad altri.
+   * Solo nel backup completo (dalla 0.14.0): i viaggi seguiti. ⚠️ Mai negli
+   * export da mandare ad altri. Fino al 3/11/2026 c'erano anche i viaggi
+   * condivisi col permesso di scrittura: ora non si riprendono più (vedi
+   * `readImport`), quindi i file nuovi non li contengono e quelli vecchi si
+   * ignorano.
    */
   shares?: Share[]
   /** Solo nel backup completo (dalla 0.19.0): come si raggruppano le foto in tappe (grouping.ts). */
@@ -99,7 +101,7 @@ async function build(kind: ExportFile['kind'], trips: Trip[], onProgress?: Progr
   const stops = await db.stops.where('tripId').anyOf(ids).toArray()
   const photoIds = await db.photos.where('tripId').anyOf(ids).primaryKeys()
   const routes = await db.routes.where('tripId').anyOf(ids).toArray()
-  const shares = kind === 'backup' ? await db.shares.where('tripId').anyOf(ids).toArray() : []
+  const shares = kind === 'backup' ? (await db.shares.where('tripId').anyOf(ids).toArray()).filter((s) => s.role === 'follow') : []
   const tripFiles: TripFile[] = []
   for (const t of trips) tripFiles.push({ ...t, coverImage: t.coverImage ? await blobToDataUrl(t.coverImage) : undefined })
 
@@ -403,11 +405,6 @@ export interface ParsedImport {
   data: Omit<ExportFile, 'photos'> & { photos: PhotoInfo[] }
   /** Il file, che `applyImport` rilegge per le miniature da aggiungere. */
   file: File
-  /**
-   * Viaggi del file che riprenderebbero una condivisione in diretta (solo backup
-   * completi). ⚠️ Si importano SOLO se chi importa lo conferma (`withShares`).
-   */
-  shareTrips: string[]
 }
 
 /**
@@ -419,10 +416,22 @@ export interface ParsedImport {
  *   file, o lo farebbe «seguire» sovrascrivendolo;
  * - tappe, foto o percorsi con gli id di ALTRI viaggi del telefono (presi da un
  *   file esportato) li sovrascriverebbero.
- * Quindi: le condivisioni si riprendono solo con una conferma esplicita, mai su
- * un viaggio che sul telefono esiste già, e mai al posto di una condivisione
- * che c'è già; ogni scheda deve appartenere a un viaggio del file e non può
- * prendere il posto di una scheda di un altro viaggio.
+ * Quindi: un import non riprende MAI una condivisione di chi viaggia (vedi
+ * sotto); i viaggi seguiti si riprendono solo dal ripristino in Impostazioni,
+ * mai su un viaggio che sul telefono esiste già e mai al posto di una
+ * condivisione che c'è già; ogni scheda deve appartenere a un viaggio del file
+ * e non può prendere il posto di una scheda di un altro viaggio.
+ *
+ * ⚠️ CONDIVISIONI DI CHI VIAGGIA MAI DA UN IMPORT (scelta dell'utente, 3/11/2026)
+ * Backup, «Smetti di condividere», viaggio cancellato, ripristino: il backup
+ * riportava id e permesso di un link che il server aveva chiuso per sempre, e
+ * il viaggio risultava «in diretta» senza che passasse niente. Il viaggio torna
+ * non condiviso: per ricondividerlo si ricomincia, con un link nuovo. Un link
+ * rimasto aperto su un telefono che non c'è più si chiude da solo dopo 30
+ * giorni (SCADENZA in `server/worker.js`). Chiuderlo da qui no: un backup si
+ * importa anche su un secondo telefono, e si chiuderebbe il link di chi è
+ * ancora in viaggio. I viaggi seguiti si riprendono: sono in sola lettura, e un
+ * link morto risulta subito «non è più condiviso».
  */
 export async function readImport(file: File): Promise<ParsedImport> {
   const photos: PhotoInfo[] = []
@@ -431,23 +440,11 @@ export async function readImport(file: File): Promise<ParsedImport> {
     delete info.thumb
     photos.push(info as PhotoInfo)
   })
-  const data = { ...head, photos }
-  // Si chiede solo per le condivisioni che si riprenderebbero davvero: quelle di
-  // viaggi che sul telefono non ci sono ancora (le stesse regole di applyImport).
-  // Ripristinando sullo stesso telefono non c'è niente da chiedere (2/11/2026:
-  // la domanda compariva sotto il pulsante, fuori vista, e l'import sembrava fermo).
-  const names = new Map(data.trips.map((t) => [t.id, t.name]))
-  const shares = data.kind === 'backup' && Array.isArray(data.shares) ? data.shares : []
-  const present = new Set((await db.trips.bulkGet(shares.map((s) => s.tripId))).flatMap((t) => (t ? [t.id] : [])))
-  const taken = new Set((await db.shares.toArray()).map((s) => s.tripId))
-  const shareTrips = shares
-    .filter((s) => !present.has(s.tripId) && !taken.has(s.tripId))
-    .map((s) => names.get(s.tripId))
-    .filter((n): n is string => !!n)
-  return { data, file, shareTrips }
+  const shares = head.kind === 'backup' && Array.isArray(head.shares) ? head.shares.filter((s) => s.role === 'follow') : []
+  return { data: { ...head, photos, shares }, file }
 }
 
-/** Legge e importa, senza riprendere le condivisioni. */
+/** Legge e importa, senza riprendere i viaggi seguiti. */
 export async function importFile(file: File): Promise<ImportSummary> {
   return applyImport(await readImport(file), false)
 }
@@ -457,6 +454,7 @@ export async function importFile(file: File): Promise<ImportSummary> {
  * si aggiunge solo ciò che manca (vedi sotto). Niente si cancella e niente
  * torna indietro.
  */
+/** `withShares`: riprende anche i viaggi seguiti del backup (il ripristino in Impostazioni). */
 export async function applyImport({ data, file }: ParsedImport, withShares: boolean, onProgress?: Progress): Promise<ImportSummary> {
   // Un ripristino grande richiede tempo: l'app non si ricarica per un aggiornamento a metà.
   setBusy(true)
@@ -564,16 +562,14 @@ async function writeImport(data: ParsedImport['data'], file: File, withShares: b
   // ma arriverebbero al vecchio indirizzo. Si tiene solo se è la stessa di
   // questo telefono; altrimenti risultano spente e si riattivano con un tocco.
   const mine = data.shares?.some((s) => s.notify) ? await currentPushSub() : undefined
-  // Condivisioni: solo con la conferma, solo per viaggi che sul telefono non ci
-  // sono ancora (il ripristino su un telefono nuovo), mai al posto di una che c'è.
+  // Viaggi seguiti (solo quelli: vedi `readImport`): solo dal ripristino, solo
+  // per viaggi che sul telefono non ci sono ancora, mai al posto di una
+  // condivisione che c'è.
   const already = new Set((await db.trips.bulkGet(data.trips.map((t) => t.id))).flatMap((t) => (t ? [t.id] : [])))
   const taken = new Set((await db.shares.toArray()).map((s) => s.tripId))
   const shares = (withShares && data.kind === 'backup' ? (data.shares ?? []) : [])
-    .filter((s) => fileTrips.has(s.tripId) && !already.has(s.tripId) && !taken.has(s.tripId))
+    .filter((s) => s.role === 'follow' && fileTrips.has(s.tripId) && !already.has(s.tripId) && !taken.has(s.tripId))
     .map((s) => (s.notify && s.notify.sub !== mine ? { ...s, notify: undefined } : s))
-    // Il backup può essere più vecchio di quello che c'è sul server: il primo
-    // invio controlla quali foto ci sono davvero (sync.ts, revisione D2).
-    .map((s) => (s.role === 'owner' ? { ...s, recheck: true } : s))
 
   // Gli id sono quelli dell'esportazione: se l'app li ha già mostrati, gli
   // indirizzi in memoria puntano alle immagini di prima.

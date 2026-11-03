@@ -19,6 +19,7 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
     setScanning(false)
     setText(t)
   }, [])
+  const closeScanner = useCallback(() => setScanning(false), [])
 
   async function start() {
     if (!code) return
@@ -48,11 +49,11 @@ export default function FollowSheet({ initial, onClose, onFollowed }: { initial?
           </button>
         )}
         {!text && !!navigator.mediaDevices?.getUserMedia && (
-          <button className="btn ghost" onClick={() => setScanning(!scanning)}>
-            {scanning ? 'Chiudi la fotocamera' : 'Inquadra il QR code'}
+          <button className="btn ghost" onClick={() => setScanning(true)}>
+            Inquadra il QR code
           </button>
         )}
-        {scanning && !text && <QrScanner onCode={onCode} />}
+        {scanning && !text && <QrScanner onCode={onCode} onClose={closeScanner} />}
         {text && !code && <p className="small" style={{ margin: 0 }}>Questo non sembra un link di MyTrip.</p>}
         {working && (
           <>

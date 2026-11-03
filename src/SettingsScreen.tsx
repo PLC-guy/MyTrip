@@ -298,20 +298,19 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
   const backup = useBackupState()
   const trips = useLiveQuery(() => db.trips.count())
   const [choosing, setChoosing] = useState(false)
-  const [ask, setAsk] = useState<ParsedImport>()
   // Import in corso: un backup completo con le miniature a 1080 px può pesare
   // decine di MB e il telefono ci mette un po' (2/11/2026: senza avviso
   // sembrava che non succedesse niente).
   const [importing, setImporting] = useState(false)
   // Foto scritte durante il ripristino, per un backup grande.
   const [written, setWritten] = useState<{ done: number; total: number }>()
-  // Domanda, avviso e risultato stanno sotto il pulsante: sul telefono possono
-  // finire fuori vista, quindi la pagina ci scorre da sola.
+  // Avviso e risultato stanno sotto il pulsante: sul telefono possono finire
+  // fuori vista, quindi la pagina ci scorre da sola.
   const outcome = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // Scorrimento immediato: quello «morbido» nel browser di prova a volte non partiva.
-    if (ask || msg || importing) outcome.current?.scrollIntoView({ block: 'center' })
-  }, [ask, msg, importing])
+    if (msg || importing) outcome.current?.scrollIntoView({ block: 'center' })
+  }, [msg, importing])
 
   async function finish(parsed: ParsedImport, withShares: boolean) {
     setImporting(true)
@@ -351,7 +350,7 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       <button className="btn" disabled={working || !trips} onClick={() => void run(async () => ((await runBackup()) ? 'Backup fatto.' : undefined))}>
         Fai il backup completo
       </button>
-      <p className="small">Il backup contiene anche i link dei viaggi che condividi. Tienilo per te.</p>
+      <p className="small">Il backup contiene anche i link dei viaggi che segui. Tienilo per te.</p>
 
       <h2 className="section-title">Esporta alcuni viaggi</h2>
       <p className="small">Per passare qualche viaggio a qualcuno. Più viaggi finiscono in un unico file.</p>
@@ -391,9 +390,8 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
             void run(async () => {
               setImporting(true)
               const parsed = await readImport(file).finally(() => setImporting(false))
-              // Un backup con condivisioni in diretta: si chiede prima (sicurezza, backup.ts).
-              if (parsed.shareTrips.length) return void setAsk(parsed)
-              return finish(parsed, false)
+              // I viaggi seguiti del backup si riprendono, quelli condivisi mai (backup.ts).
+              return finish(parsed, true)
             })
           }}
         />
@@ -402,21 +400,6 @@ function BackupPage({ go }: { go: (r: Route) => void }) {
       {importing && (
         <div className="note-box" style={{ marginTop: 12 }} role="status">
           {written ? `Aggiungo le foto: ${written.done} di ${written.total}. Tieni l'app aperta.` : "Leggo il file. Se è un backup grande può volerci un po', tieni l'app aperta."}
-        </div>
-      )}
-      {ask && (
-        <div className="note-box warm" style={{ marginTop: 12 }} role="alert">
-          <p style={{ marginTop: 0 }}>
-            Questo backup riprende anche la condivisione in diretta di {ask.shareTrips.map((n) => `«${n}»`).join(', ')}. Riprendila solo se il backup è tuo.
-          </p>
-          <div className="stack">
-            <button className="btn" disabled={working} onClick={() => { const p = ask; setAsk(undefined); void run(() => finish(p, true)) }}>
-              Il backup è mio, riprendi la condivisione
-            </button>
-            <button className="btn ghost" disabled={working} onClick={() => { const p = ask; setAsk(undefined); void run(() => finish(p, false)) }}>
-              Importa senza condivisione
-            </button>
-          </div>
         </div>
       )}
       {msg && <div className="note-box" style={{ marginTop: 12 }} role="status">{msg}</div>}

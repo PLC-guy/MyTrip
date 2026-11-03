@@ -72,7 +72,8 @@ export function useSyncStatus(tripId: string): SyncStatus {
 // --- Rete --------------------------------------------------------------------
 
 function explain(status: number): string {
-  if (status === 403) return 'Questo telefono non può più aggiornare il viaggio. Smetti di condividere e ricomincia.'
+  // Link chiuso: per esempio scaduto dopo 30 giorni senza aprire l'app (`stillHere`).
+  if (status === 403) return "Il link non funziona più. Succede per esempio dopo 30 giorni senza aprire l'app. Smetti di condividere e ricomincia."
   if (status === 413) return 'Il viaggio è troppo grande per essere condiviso.'
   return 'Il server non risponde. Riprovo più tardi da solo.'
 }
@@ -176,28 +177,18 @@ export function pushShare(tripId: string): Promise<void> {
 async function pushOnce(tripId: string): Promise<void> {
   const share = await db.shares.get(tripId)
   if (share?.role !== 'owner') return
+  // Link chiuso sul server: non passa più niente, si aspetta «Smetti di
+  // condividere». Senza questo un giro senza novità cancellava l'errore.
+  if (share.error === explain(403)) return
   const trip = await db.trips.get(tripId)
   if (!trip) return
   const sent = { ...(share.sent ?? {}) }
   let changed = false
   let note = share.note
-  // L'indice da confrontare: dopo un ripristino si ricarica comunque.
-  let lastV = share.v
   let busy = false
+  // Il controllo dopo un ripristino (`recheck`, revisione D2) non serve più:
+  // un import non riprende mai una condivisione di chi viaggia (backup.ts).
   try {
-    // ⚠️ CONDIVISIONE RIPRESA DA UN BACKUP (revisione di robustezza D2, 2/11/2026)
-    // Su un telefono nuovo `sent` è quello del backup. Una foto tolta dopo il
-    // backup torna col backup ma risultava già mandata, mentre il server l'aveva
-    // cancellata: chi segue non la trovava mai. Una sola lettura, l'indice del
-    // server, dice quali foto ci sono davvero; le altre si ricaricano.
-    if (share.recheck) {
-      const index = await getIndex(share)
-      const there = new Set(index?.photos.map((p) => p.id))
-      if (index?.trip.coverImageId) there.add(index.trip.coverImageId)
-      for (const id of Object.keys(sent)) if (sent[id] > 0 && !there.has(id)) delete sent[id]
-      lastV = undefined
-      changed = true
-    }
     const stops = await db.stops.where('tripId').equals(tripId).sortBy('start')
     const photos = await db.photos.where('tripId').equals(tripId).toArray()
     const routes = await db.routes.where('tripId').equals(tripId).toArray()
@@ -257,7 +248,7 @@ async function pushOnce(tripId: string): Promise<void> {
     }
     const json = JSON.stringify(index)
     const v = await sha256(json)
-    if (v !== lastV) {
+    if (v !== share.v) {
       setStatus(tripId, { busy: true })
       await putPiece(share, 'm', await gzip(json), v)
     }
@@ -294,7 +285,7 @@ async function pushOnce(tripId: string): Promise<void> {
     }
     // ⚠️ Si scrive solo se qualcosa è cambiato: la scrittura sveglia `watch`,
     // che rifà un giro; quel giro non trova novità e si ferma lì.
-    if (changed || v !== share.v || share.error) await db.shares.update(tripId, { sent, v, note, at: Date.now(), error: undefined, recheck: undefined })
+    if (changed || v !== share.v || share.error) await db.shares.update(tripId, { sent, v, note, at: Date.now(), error: undefined })
     retryLater(tripId, undefined)
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e)
@@ -338,7 +329,15 @@ export async function startSharing(tripId: string): Promise<void> {
 export async function stopSharing(tripId: string): Promise<void> {
   const share = await db.shares.get(tripId)
   if (share?.role !== 'owner') return
-  await call('DELETE', '', share)
+  try {
+    await call('DELETE', '', share)
+  } catch (e) {
+    // ⚠️ Link già chiuso (segnalazione dell'utente, 3/11/2026): il server
+    // rifiuta un id revocato, e la condivisione restava sul telefono per sempre,
+    // col pulsante che sembrava non fare niente. Sul server non c'è più niente da
+    // cancellare: si toglie solo da qui.
+    if (!(e instanceof Error && e.message === explain(403))) throw e
+  }
   await db.shares.delete(tripId)
 }
 
@@ -596,6 +595,44 @@ async function retryLeaves(): Promise<void> {
   }
 }
 
+/**
+ * ⚠️ «CI SONO ANCORA» (scelta dell'utente, 3/11/2026)
+ *
+ * Il server chiude da solo un link che per 30 giorni non dà segni di vita
+ * (telefono perso o app cancellata: vedi SCADENZA in `server/worker.js`).
+ * All'apertura dell'app, al massimo ogni ALIVE_EVERY_MS, il telefono che
+ * condivide si fa vivo per ogni suo viaggio condiviso. Un link già chiuso
+ * risponde 403: il viaggio mostra l'errore e si ricomincia.
+ */
+const ALIVE_KEY = 'mytrip:vivo'
+const ALIVE_EVERY_MS = 12 * 3_600_000
+async function stillHere(): Promise<void> {
+  let last = 0
+  try {
+    last = Number(localStorage.getItem(ALIVE_KEY)) || 0
+  } catch {
+    // ignorata di proposito
+  }
+  if (Date.now() - last < ALIVE_EVERY_MS) return
+  let ok = true
+  for (const s of await db.shares.where('role').equals('owner').toArray()) {
+    // Prima condivisione non ancora finita: il server non conosce l'id.
+    if (!s.v) continue
+    try {
+      await call('POST', '/vivo', s)
+    } catch (e) {
+      if (e instanceof Error && e.message === explain(403)) await db.shares.update(s.tripId, { error: e.message })
+      else ok = false
+    }
+  }
+  if (!ok) return
+  try {
+    localStorage.setItem(ALIVE_KEY, String(Date.now()))
+  } catch {
+    // ignorata di proposito
+  }
+}
+
 // --- Quando sincronizzare ----------------------------------------------------
 
 const PULL_EVERY_MS = 5 * 60_000
@@ -621,6 +658,7 @@ let started = false
 export function startSync(): void {
   if (started) return
   started = true
+  void stillHere()
   void retryLeaves()
   void pushAll()
   void pullAll()
@@ -652,7 +690,10 @@ export function startSync(): void {
     void pullAll()
   })
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void pullAll()
+    if (document.visibilityState !== 'visible') return
+    // Sull'iPhone l'app installata resta spesso aperta dietro: tornarci vale come aprirla.
+    void stillHere()
+    void pullAll()
   })
   setInterval(() => {
     if (document.visibilityState === 'visible') void pullAll()
